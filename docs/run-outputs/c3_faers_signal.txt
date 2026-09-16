@@ -1,3 +1,16 @@
-== 步骤 1：拉取两组报告级 AE（search + fields，R 内聚合；count 接口需 API key 故不用）==
-[cache] 网络失败: HTTP 403 Forbidden. 
-读取: ./cases/cache/faers_imatinib.rds 
+== 步骤 1：分页拉取报告级 AE（5 页 x 100 报告/组，免 API key；R 内聚合 PT）==
+imatinib 组 PT 提及合计: 0 （来自 1000 份报告）；背景组: 0 
+
+== 步骤 2：imatinib AE 频数 Top10 ==
+[1] N
+<0 rows> (or 0-length row.names)
+
+== 步骤 3：2x2 不成比例分析（目标 PT = Oedema peripheral）==
+            AE
+Group        Oedema peripheral other PTs
+  imatinib                   0         0
+  background                 0         0
+ROR = NaN (95%CI NaN - NaN)；PRR = NaN
+判读：ROR 95%CI 下限 > 1 且 a >= 3 视为不成比例信号（教学口径）。
+注意：count 接口限 Top1000，b/d 为截断近似；监管级信号检测需用全量 FAERS 季度文件。
+== C3 完成 ==

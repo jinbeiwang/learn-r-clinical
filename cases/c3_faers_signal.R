@@ -8,13 +8,18 @@ dir.create(cachedir, showWarnings = FALSE, recursive = TRUE)
 count_pt <- function(search = NULL, cache_name) {
   cf <- file.path(cachedir, cache_name)
   get_it <- function() {
-    q <- list(limit = 1000)
-    if (!is.null(search)) q$search <- search
-    r <- request("https://api.fda.gov/drug/event.json") %>%
-      req_url_query(!!!q) %>%
-      req_timeout(300)
-    js <- resp_body_json(req_perform(r))
-    pts <- unlist(lapply(js$results, function(x) unlist(x$patient$reaction$reaction_pt)))
+    pages <- list()
+    for (sk in seq(0, 400, by = 100)) {
+      q <- list(limit = 100, skip = sk)
+      if (!is.null(search)) q$search <- search
+      r <- request("https://api.fda.gov/drug/event.json") %>%
+        req_url_query(!!!q) %>%
+        req_timeout(120)
+      js <- resp_body_json(req_perform(r))
+      pages[[length(pages) + 1]] <- js$results
+    }
+    results <- unlist(pages, recursive = FALSE)
+    pts <- unlist(lapply(results, function(x) unlist(x$patient$reaction$reaction_pt)))
     tb <- sort(table(pts), decreasing = TRUE)
     data.frame(PT = names(tb), N = as.integer(tb), stringsAsFactors = FALSE)
   }
@@ -26,7 +31,7 @@ count_pt <- function(search = NULL, cache_name) {
   })
 }
 
-cat("== 步骤 1：拉取两组报告级 AE（search + fields，R 内聚合；count 接口需 API key 故不用）==\n")
+cat("== 步骤 1：分页拉取报告级 AE（5 页 x 100 报告/组，免 API key；R 内聚合 PT）==\n")
 drug <- count_pt('patient.drug.openfda.generic_name:"imatinib"', "faers_imatinib.rds")
 bg   <- count_pt(NULL, "faers_background.rds")
 cat("imatinib 组 PT 提及合计:", sum(drug$N), "（来自 1000 份报告）；背景组:", sum(bg$N), "\n")
@@ -51,5 +56,5 @@ prr <- (a / (a + b)) / (c / (c + d))
 cat(sprintf("ROR = %.2f (95%%CI %.2f - %.2f)；PRR = %.2f\n",
             ror, exp(log(ror) - 1.96 * se), exp(log(ror) + 1.96 * se), prr))
 cat("判读：ROR 95%CI 下限 > 1 且 a >= 3 视为不成比例信号（教学口径）。\n")
-cat("注意：count 接口限 Top1000，b/d 为截断近似；监管级信号检测需用全量 FAERS 季度文件。\n")
+cat("注意：每组 500 份报告为截断样本（免 key 分页上限）；监管级信号检测需用全量 FAERS 季度文件。\n")
 cat("== C3 完成 ==\n")
