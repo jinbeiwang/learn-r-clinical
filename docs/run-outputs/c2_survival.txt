@@ -1,0 +1,30 @@
+== 步骤 1：数据与清洗 ==
+n = 228 ；事件数 = 165 ；删失 = 63 
+
+== 步骤 2：KM 按性别分层 ==
+Call: survfit(formula = Surv(time, status) ~ sex, data = dat)
+
+        n events median 0.95LCL 0.95UCL
+sex=1 138    112    270     212     310
+sex=2  90     53    426     348     550
+
+== 步骤 3：log-rank 检验 ==
+Call:
+survdiff(formula = Surv(time, status) ~ sex, data = dat)
+
+        N Observed Expected (O-E)^2/E (O-E)^2/V
+sex=1 138      112     91.6      4.55      10.3
+sex=2  90       53     73.4      5.68      10.3
+
+ Chisq= 10.3  on 1 degrees of freedom, p= 0.001 
+
+== 步骤 4：Cox 多变量模型 ==
+               coef exp(coef)    se(coef)         z     Pr(>|z|)
+age      0.01106676 1.0111282 0.009267411  1.194159 2.324157e-01
+sex     -0.55261240 0.5754446 0.167739054 -3.294477 9.860514e-04
+ph.ecog  0.46372848 1.5899912 0.113577266  4.082934 4.447067e-05
+HR(sex=男 vs 女) = 0.575 
+
+== 步骤 5：KM 图落盘 ==
+KM 图已保存: ./docs/run-outputs/c2_km.png ；文件大小 = 5187 bytes
+== C2 完成 ==

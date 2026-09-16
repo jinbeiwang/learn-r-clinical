@@ -1,0 +1,61 @@
+== 步骤 1：抓取概况 ==
+研究数: 100 （API v2, query.cond=diabetes, pageSize=100）
+
+== 步骤 2：状态分布 ==
+                 status  n
+1             COMPLETED 57
+2               UNKNOWN 21
+3            RECRUITING  7
+4 ACTIVE_NOT_RECRUITING  5
+5    NOT_YET_RECRUITING  4
+6             WITHDRAWN  4
+7            TERMINATED  2
+
+== 步骤 3：相位 × 状态 ==
+               status
+phase           ACTIVE_NOT_RECRUITING COMPLETED NOT_YET_RECRUITING RECRUITING
+  NA                                4        23                  3          4
+  NA/EARLY1                         1        13                  1          1
+  PHASE1                            0         5                  0          1
+  PHASE1/PHASE2                     0         0                  0          1
+  PHASE2                            0         2                  0          0
+  PHASE2/PHASE3                     0         1                  0          0
+  PHASE3                            0         8                  0          0
+  PHASE4                            0         5                  0          0
+               status
+phase           TERMINATED UNKNOWN WITHDRAWN
+  NA                     1       9         2
+  NA/EARLY1              0       7         0
+  PHASE1                 0       0         0
+  PHASE1/PHASE2          0       0         0
+  PHASE2                 0       1         1
+  PHASE2/PHASE3          0       0         0
+  PHASE3                 1       3         1
+  PHASE4                 0       1         0
+
+== 步骤 4：牵头赞助方 Top10 ==
+                           sponsor n
+                  Novo Nordisk A/S 4
+                 Assiut University 2
+             Eli Lilly and Company 2
+                  Korea University 2
+                            Sanofi 2
+             University of Chicago 2
+ University of Maryland, Baltimore 2
+                       AstraZeneca 1
+                             Bayer 1
+        Baylor College of Medicine 1
+
+== 步骤 5：条件词 Top10（条形图数据）==
+                        c1 n
+         Diabetes Mellitus 9
+           Type 2 Diabetes 9
+                  Diabetes 8
+ Diabetes Mellitus, Type 2 6
+  Type 2 Diabetes Mellitus 4
+             Diabetic Foot 3
+       Diabetic Foot Ulcer 3
+      Diabetic Retinopathy 3
+              Hypertension 3
+                   Obesity 3
+== C5 完成 ==

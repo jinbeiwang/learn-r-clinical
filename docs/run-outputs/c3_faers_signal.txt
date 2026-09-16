@@ -1,0 +1,3 @@
+== 步骤 1：拉取两组报告级 AE（search + fields，R 内聚合；count 接口需 API key 故不用）==
+[cache] 网络失败: HTTP 403 Forbidden. 
+读取: ./cases/cache/faers_imatinib.rds 

@@ -1,0 +1,11 @@
+== 步骤 1：构造 ADaM 输入 ==
+datanames: ADAE, ADSL 
+
+== 步骤 2：组装 teal 应用 ==
+app 类型: teal_app 
+
+== 步骤 3：模块清单 ==
+character(0)
+
+非交互模式：不启动服务器。交互运行请在 R 会话执行 shiny::runApp(app)。
+== C6 完成 ==

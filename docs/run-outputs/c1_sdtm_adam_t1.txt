@@ -1,0 +1,37 @@
+== 步骤 1：SDTM 源数据 ==
+dm: 306 行 / 28 列；ae: 1191 行
+
+== 步骤 2：admiral 推导 ADSL ==
+# A tibble: 4 x 3
+  ARM                  ITTFL     n
+  <chr>                <chr> <int>
+1 Placebo              Y        86
+2 Screen Failure       N        52
+3 Xanomeline High Dose Y        84
+4 Xanomeline Low Dose  Y        84
+ADSL 维度: 306 14 
+
+== 步骤 3：admiral 推导 ADAE（含 AOCC01FL 首次发生标志）==
+AOCC01FL='Y' 行数: 225 （应等于受试者数 225 中有 AE 者）
+# A tibble: 5 x 2
+  AEBODSYS                                                 n
+  <chr>                                                <int>
+1 GENERAL DISORDERS AND ADMINISTRATION SITE CONDITIONS   292
+2 SKIN AND SUBCUTANEOUS TISSUE DISORDERS                 276
+3 NERVOUS SYSTEM DISORDERS                               101
+4 CARDIAC DISORDERS                                       91
+5 GASTROINTESTINAL DISORDERS                              87
+
+== 步骤 4：rtables 出 Table 1（按 ARM 分层）==
+                Placebo     Xanomeline High Dose   Xanomeline Low Dose
+----------------------------------------------------------------------
+F                                                                     
+  n               53                 40                    50         
+  Mean (SD)   76.4 (8.73)       74.7 (7.67)            75.7 (8.09)    
+M                                                                     
+  n               33                 44                    34         
+  Mean (SD)   73.4 (8.15)       74.1 (8.16)            75.6 (8.69)    
+
+== 步骤 5：双编程自检（diffdf）==
+diffdf 发现问题: FALSE 
+== C1 完成 ==

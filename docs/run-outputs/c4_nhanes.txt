@@ -1,0 +1,23 @@
+== 步骤 1：合并与清洗 ==
+分析样本 n = 5255 
+
+== 步骤 2：复杂抽样设计 ==
+Stratified 1 - level Cluster Sampling design (with replacement)
+With (30) clusters.
+svydesign(ids = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR, 
+    data = dat, nest = TRUE)
+
+== 步骤 3：加权均值（收缩压，总体与按性别）==
+       mean  SE
+BPXSY1   NA NaN
+          sex BPXSY1  se
+Male     Male     NA NaN
+Female Female     NA NaN
+
+== 步骤 4：加权逻辑回归（自报高血压 ~ 年龄 + 性别）==
+               Estimate  Std. Error   t value     Pr(>|t|)
+(Intercept)  3.39214391 0.176089045  19.26380 6.093694e-11
+RIDAGEYR    -0.05524929 0.002943011 -18.77305 8.430486e-11
+sexFemale    0.28816108 0.066952697   4.30395 8.569773e-04
+OR(年龄+1岁) = 0.946 
+== C4 完成 ==
