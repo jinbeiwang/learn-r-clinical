@@ -1,0 +1,251 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>实战案例 C5 · ClinicalTrials.gov 试验景观 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="../assets/site.css"><link rel="icon" href="../assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="../index.html"><img src="../assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="../index.html#toc">全书目录</a><a href="../ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="../index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="../ch0-environment.html">0 起步与环境</a>
+<a href="../ch1-r-basics.html">1 R 语言基础</a>
+<a href="../ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="../ch3-stats.html">3 统计分析</a>
+<a href="../ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="../ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="../ch6-pkgdev.html">6 R 包开发</a>
+<a href="../ch7-shiny.html">7 Shiny 与交互</a>
+<a href="../ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="c2-survival.html">C2 生存分析</a>
+<a href="c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="c4-nhanes.html">C4 NHANES 加权</a>
+<a class="on" href="c5-trials-landscape.html">C5 试验景观</a>
+<a href="c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="../index.html">全书目录</a> / 实战案例</div>
+<div class="chapnum">C5</div>
+<h1>ClinicalTrials.gov 试验景观：API v2 抓取与 JSON 扁平化</h1>
+<p class="lede">竞品情报、立项调研、可行性分析——SAS 时代你要等数据管理员把注册库导出成 SAS 数据集；在 R 里，httr2 + jsonlite 让你直接从 ClinicalTrials.gov 的公开 API 拉一手数据。本案例抓一页糖尿病试验，做出状态分布、相位交叉表与赞助方 Top10。</p>
+
+<h2 id="sC5-1">C5.1 背景与学习目标</h2>
+<p>ClinicalTrials.gov 由美国国家医学图书馆（NLM）运营，是全球最大的试验注册库。2024 年起官方主推 <strong>API v2</strong>：REST 风格、返回嵌套 JSON、<strong>免注册免 API key</strong>。对临床 Programmer，这是接触"试验之外"的真实世界数据管道的第一课——你要处理网络请求、超时、嵌套结构与分页，这些在 SAS 里都有对应物（filename url、PROC HTTP、PROC JSON），但在 R 里代码量少一个数量级。</p>
+<p>学完本案例，你应能：</p>
+<ol>
+<li>用 <code class="inl">httr2</code> 的管道式 API（request → req_url_query → req_perform → resp_body_json）直连 API v2，并用 <code class="inl">fields</code> 参数裁剪返回字段；</li>
+<li>把深层嵌套的 JSON 列表扁平化为 data.frame——对应 SAS 的 PROC JSON map + DATA step 拆解；</li>
+<li>用 dplyr 的 <code class="inl">count()</code> 与 base 的 <code class="inl">table()</code> 快速产出"试验景观"频数表——对应 PROC FREQ。</li>
+</ol>
+
+<h2 id="sC5-2">C5.2 数据源</h2>
+<div class="note"><strong>数据源：</strong>ClinicalTrials.gov（NLM 运营），<strong>API v2 公开、免注册、无需 API key</strong>，数据为公共注册信息。本案例以 <code class="inl">query.cond=diabetes</code> 抓取一页（<code class="inl">pageSize=100</code>）研究快照，自动缓存到 <code class="inl">cases/cache/ctgov_diabetes.rds</code>，断网可复现。提醒：v2 的 <code class="inl">pageSize</code> 单页上限为 1000，取全量需用响应里的 <code class="inl">nextPageToken</code> 翻页——本案例的一页样本只够"景观速写"，不够写报告。</div>
+
+<h2 id="sC5-3">C5.3 连接与抓取：httr2 管道 + 缓存回退</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r"># C5：ClinicalTrials.gov 试验景观扫描（API v2 直连；离线回退 cases/cache/）
+# 运行：Rscript cases/c5_trials_landscape.R
+suppressPackageStartupMessages({ library(httr2); library(jsonlite); library(dplyr) })
+
+cachedir <- file.path(if (grepl("cases$", getwd())) ".." else ".", "cases", "cache")
+dir.create(cachedir, showWarnings = FALSE, recursive = TRUE)
+cf <- file.path(cachedir, "ctgov_diabetes.rds")
+
+fields <- paste(c("NCTId", "protocolSection.conditionsModule.conditions",
+                  "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+                  "protocolSection.designModule.phases",
+                  "protocolSection.statusModule.overallStatus"), collapse = ",")
+fetch <- function() {
+  js <- request("https://clinicaltrials.gov/api/v2/studies") %>%
+    req_url_query(query.cond = "diabetes", pageSize = 100, format = "json",
+                  fields = fields) %>%
+    req_timeout(90) %>%
+    req_perform() %>%
+    resp_body_json()
+  js$studies
+}
+st <- tryCatch({ s <- fetch(); saveRDS(s, cf); s },
+               error = function(e) {
+                 cat("[cache] 网络失败:", conditionMessage(e), "\n读取:", cf, "\n")
+                 readRDS(cf)
+               })</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">fields</code>：API v2 默认返回完整嵌套 JSON（单条研究可达几十 KB），用点路径只取 5 个字段，payload 立刻小一个数量级——这是 v2 相对 v1 的重要新能力。</li>
+<li><code class="inl">request() %>% req_url_query() %>% req_timeout(90) %>% req_perform() %>% resp_body_json()</code>：httr2 的管道式 HTTP——每一步返回 request 对象，最后一步解析。对照 SAS：相当于 <code class="inl">filename u url '...';</code> + PROC HTTP + PROC JSON 三件套压缩成一行链。</li>
+<li><code class="inl">resp_body_json()</code> 把 JSON 解析成 R 的嵌套 list（jsonlite 亦可）；<code class="inl">js$studies</code> 取出研究数组——v2 响应顶层是 <code class="inl">studies</code> + <code class="inl">nextPageToken</code>。</li>
+<li><code class="inl">tryCatch + saveRDS</code>：与 C4 相同的"在线优先、缓存回退"骨架，网络失败时打印异常信息再读本地快照。</li>
+</ol></div>
+
+<h2 id="sC5-4">C5.4 扁平化：嵌套 JSON → 宽表</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">flat <- data.frame(
+  nct = sapply(st, function(x) x$protocolSection$identificationModule$nctId),
+  cond = sapply(st, function(x) paste(unlist(x$protocolSection$conditionsModule$conditions), collapse = "; ")),
+  sponsor = sapply(st, function(x) x$protocolSection$sponsorCollaboratorsModule$leadSponsor$name),
+  phase = sapply(st, function(x) paste(unlist(x$protocolSection$designModule$phases), collapse = "/")),
+  status = sapply(st, function(x) x$protocolSection$statusModule$overallStatus),
+  stringsAsFactors = FALSE
+)
+flat$phase[flat$phase == ""] <- "NA/EARLY1"</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">sapply(st, function(x) ...)</code>：对每条研究逐一取字段并收成一个向量——对应 PROC JSON 用 map 定义字段路径后在 DATA step 里逐变量取值。</li>
+<li><code class="inl">conditions</code> 与 <code class="inl">phases</code> 是数组：<code class="inl">unlist + paste(collapse = "; ")</code> 把多值压成分号串，等价于 SAS 里 CATX(';', of cond1-condN)。</li>
+<li><code class="inl">stringsAsFactors = FALSE</code>：老 R 用户（和 SAS 转 R 用户）的好习惯——别让字符列悄悄变 factor；R 4.x 默认已是 FALSE，写明是为了可移植。</li>
+<li>最后一行补空：部分器械/早期试验没有 phases，取出来是空串，统一记为 <code class="inl">"NA/EARLY1"</code>，避免交叉表里出现无名类别。</li>
+</ol></div>
+
+<h2 id="sC5-5">C5.5 步骤 1–2：抓取概况与状态分布</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("== 步骤 1：抓取概况 ==\n")
+cat("研究数:", nrow(flat), "（API v2, query.cond=diabetes, pageSize=100）\n")
+
+cat("\n== 步骤 2：状态分布 ==\n")
+print(flat %>% count(status, sort = TRUE))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 1：抓取概况 ==
+研究数: 100 （API v2, query.cond=diabetes, pageSize=100）
+
+== 步骤 2：状态分布 ==
+                 status  n
+1             COMPLETED 57
+2               UNKNOWN 21
+3            RECRUITING  7
+4 ACTIVE_NOT_RECRUITING  5
+5    NOT_YET_RECRUITING  4
+6             WITHDRAWN  4
+7            TERMINATED  2</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">count(status, sort = TRUE)</code> ↔ <code class="inl">proc freq; tables status / order=freq;</code>：一行完成分组计数 + 按频数降序。</li>
+<li>本页 100 条里 COMPLETED 占 57、UNKNOWN 占 21——UNKNOWN 是"状态超过两年未更新"的注册记录，做景观分析时通常单列或剔除，别当 RECRUITING 处理。</li>
+</ol></div>
+
+<h2 id="sC5-6">C5.6 步骤 3：相位 × 状态交叉表</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 3：相位 × 状态 ==\n")
+print(table(phase = flat$phase, status = flat$status))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 3：相位 × 状态 ==
+               status
+phase           ACTIVE_NOT_RECRUITING COMPLETED NOT_YET_RECRUITING RECRUITING
+  NA                                4        23                  3          4
+  NA/EARLY1                         1        13                  1          1
+  PHASE1                            0         5                  0          1
+  PHASE1/PHASE2                     0         0                  0          1
+  PHASE2                            0         2                  0          0
+  PHASE2/PHASE3                     0         1                  0          0
+  PHASE3                            0         8                  0          0
+  PHASE4                            0         5                  0          0
+               status
+phase           TERMINATED UNKNOWN WITHDRAWN
+  NA                     1       9         2
+  NA/EARLY1              0       7         0
+  PHASE1                 0       0         0
+  PHASE1/PHASE2          0       0         0
+  PHASE2                 0       1         1
+  PHASE2/PHASE3          0       0         0
+  PHASE3                 1       3         1
+  PHASE4                 0       1         0</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">table(a, b)</code> ↔ <code class="inl">proc freq; tables a*b / norow nocol nopercent;</code>：base R 的交叉表，零依赖。</li>
+<li>行名出现 <code class="inl">NA</code> 与 <code class="inl">NA/EARLY1</code> 两类"无相位"：前者是抓取时 phases 缺失（NA 字符），后者是我们统一补的标签——真实项目里应先统一口径再交叉，这个"脏"输出恰好演示了清洗顺序的重要性。</li>
+<li>PHASE3 全部处于 COMPLETED/TERMINATED/UNKNOWN/WITHDRAWN，没有 RECRUITING——只是一页样本的巧合，不要据此下结论（见下方 SAS 误区）。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>把 <code class="inl">pageSize=100</code> 的一页当成总体直接出报告。API 返回的只是按默认顺序排的一页样本，就像在 SAS 里 <code class="inl">obs=100</code> 读了前 100 条就做全库统计。正式分析必须用 <code class="inl">nextPageToken</code> 翻页取全量（单页上限 1000），或改用 R 包 <code class="inl">ctrdata</code> 把注册库批量入库后再查。</div>
+
+<h2 id="sC5-7">C5.7 步骤 4–5：赞助方与条件词 Top10</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 4：牵头赞助方 Top10 ==\n")
+print(flat %>% count(sponsor, sort = TRUE) %>% slice_head(n = 10), row.names = FALSE)
+
+cat("\n== 步骤 5：条件词 Top10（条形图数据）==\n")
+cond_long <- flat %>%
+  mutate(c1 = sub(";.*$", "", cond)) %>%
+  count(c1, sort = TRUE) %>% slice_head(n = 10)
+print(cond_long, row.names = FALSE)
+cat("== C5 完成 ==\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 4：牵头赞助方 Top10 ==
+                           sponsor n
+                  Novo Nordisk A/S 4
+                 Assiut University 2
+             Eli Lilly and Company 2
+                  Korea University 2
+                            Sanofi 2
+             University of Chicago 2
+ University of Maryland, Baltimore 2
+                       AstraZeneca 1
+                             Bayer 1
+        Baylor College of Medicine 1
+
+== 步骤 5：条件词 Top10（条形图数据）==
+                        c1 n
+         Diabetes Mellitus 9
+           Type 2 Diabetes 9
+                  Diabetes 8
+ Diabetes Mellitus, Type 2 6
+  Type 2 Diabetes Mellitus 4
+             Diabetic Foot 3
+       Diabetic Foot Ulcer 3
+      Diabetic Retinopathy 3
+              Hypertension 3
+                   Obesity 3
+== C5 完成 ==</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">count(sponsor, sort = TRUE) %>% slice_head(n = 10)</code>：计数降序后取前 10——对应 SAS 里 PROC SQL <code class="inl">group by ... order by cnt desc</code> 再 <code class="inl">obs=10</code> 的两步，这里一个管道。</li>
+<li><code class="inl">sub(";.*$", "", cond)</code>：正则取分号前第一个条件词，等价于 <code class="inl">scan(cond, 1, ';')</code>；<code class="inl">.*$</code> 意为"从分号到结尾都替换为空"。</li>
+<li>Top10 里 Novo Nordisk、Eli Lilly、Sanofi、AstraZeneca 与多所大学并存——糖尿病领域"大厂 + 学术中心"混合生态的一页速写。</li>
+<li>条件词榜揭示注册库的<strong>术语不统一</strong>："Diabetes Mellitus / Type 2 Diabetes / Diabetes Mellitus, Type 2"是同一概念的不同写法。真实景观分析要先做词表归一（或改用 MeSH 字段），否则 Top 榜被同义词稀释。</li>
+</ol></div>
+
+<h2 id="sC5-8">C5.8 解读要点</h2>
+<ul>
+<li><strong>免 key 直连</strong>：GET <code class="inl">https://clinicaltrials.gov/api/v2/studies?query.cond=...</code> 即可用；httr2 的管道把 URL、参数、超时、解析分层管理，比 SAS 的 filename url 样板代码短得多，也更容易加重试与日志。</li>
+<li><strong>fields 裁剪</strong>：用点路径（如 <code class="inl">protocolSection.designModule.phases</code>）只要需要的字段，这是 v2 的推荐用法，能显著提速并简化解析。</li>
+<li><strong>扁平化套路</strong>：<code class="inl">sapply(list, function(x) x$a$b$c)</code> + <code class="inl">unlist/paste(collapse)</code> 处理标量与数组两类节点；空数组会塌成空串，要显式补类别。</li>
+<li><strong>count/table 即 PROC FREQ</strong>：<code class="inl">count(x, sort = TRUE)</code> 是 order=freq 的 tables 语句；<code class="inl">table(a, b)</code> 是二维交叉表。出报告级频数表再上 gtsummary。</li>
+<li><strong>缓存即复现</strong>：网络案例必须把抓取结果落盘（RDS），tryCatch 自动回退——递交语境下，还应记录抓取时间戳与查询参数，作为数据溯源的一部分。</li>
+</ul>
+
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：在 ClinicalTrials.gov API v2 中，试验相位（如 PHASE3）应从哪个字段路径获取？</p>
+<button class="quiz-opt" data-opt="A">响应顶层的 phase 字段</button>
+<button class="quiz-opt" data-opt="B">protocolSection.designModule.phases</button>
+<button class="quiz-opt" data-opt="C">protocolSection.statusModule.overallStatus.phases</button>
+<div class="quiz-exp">选 B。v2 把研究信息组织在 protocolSection 下：设计相关（相位、随机化、掩蔽）在 designModule，招募状态在 statusModule（overallStatus 是 RECRUITING/COMPLETED 等，不含相位）。注意 phases 是数组——早期/器械试验可能为空，需要像本案例一样补类别。另一个常考点：pageSize 单页上限是 1000，超过要用 nextPageToken 翻页。</div>
+</div>
+
+<h2 id="sC5-ex">C5.9 练习</h2>
+<ol>
+<li>（易）把 <code class="inl">query.cond</code> 换成 hypertension、obesity 或你关注的疾病词重跑，对比状态分布与赞助方 Top10 有何不同（记得换缓存文件名，避免读到旧快照）。</li>
+<li>（中）先取赞助方 Top10，再子集化做"赞助方 × 相位"交叉表（<code class="inl">table(flat2$sponsor, flat2$phase)</code>），对应 SAS 的两维 PROC FREQ；观察大厂与学术中心的相位构成差异。</li>
+<li>（难）在 <code class="inl">fields</code> 里追加 <code class="inl">protocolSection.statusModule.startDateStruct.date</code>，解析出开始年份，用 <code class="inl">count(year)</code> + ggplot2 画该疾病领域的年度启动趋势图；若样本不足，先用 nextPageToken 翻页抓多页再画。</li>
+</ol>
+
+<h2 id="sC5-res">C5.10 扩展阅读</h2>
+<section class="res">
+<ul>
+<li><a href="https://clinicaltrials.gov/api/v2/">ClinicalTrials.gov API v2 官方文档</a> — 端点、查询语法、字段结构与分页（nextPageToken）规范 <span class="tag">参考</span></li>
+<li><a href="https://cran.r-project.org/package=ctrdata">ctrdata（CRAN）</a> — 把 CTG/EUCTR 注册数据批量抓取到文档型数据库再用 dplyr 查询，适合大规模景观分析与定期监测 <span class="tag">进阶</span></li>
+<li><a href="https://httr2.r-lib.org">httr2 官方文档</a> — 请求管道、重试（req_retry）、限流（req_throttle）与 OAuth，联网数据管道的完整工具箱 <span class="tag">进阶</span></li>
+</ul>
+</section>
+<p class="lede">下一案例：<a href="c6-teal-explorer.html">C6 teal 探索器</a>——把 C1 推导好的 ADaM 装进 pharmaverse 的 teal 框架，做一个带过滤面板的交互式临床数据浏览器。</p>
+</article></main>
+<aside class="toc">
+<a href="#sC5-1">C5.1 背景与学习目标</a>
+<a href="#sC5-2">C5.2 数据源</a>
+<a href="#sC5-3">C5.3 连接与抓取</a>
+<a href="#sC5-4">C5.4 JSON 扁平化</a>
+<a href="#sC5-5">C5.5 概况与状态分布</a>
+<a href="#sC5-6">C5.6 相位 × 状态</a>
+<a href="#sC5-7">C5.7 Top10 榜单</a>
+<a href="#sC5-8">C5.8 解读要点</a>
+<a href="#sC5-ex">C5.9 练习</a>
+<a href="#sC5-res">C5.10 扩展阅读</a>
+</aside>
+</div>
+<script src="../assets/site.js"></script></body></html>

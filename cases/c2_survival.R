@@ -19,7 +19,7 @@ print(survdiff(Surv(time, status) ~ sex, data = dat))
 cat("\n== 步骤 4：Cox 多变量模型 ==\n")
 cox <- coxph(Surv(time, status) ~ age + sex + ph.ecog, data = dat)
 print(summary(cox)$coefficients)
-cat("HR(sex=男 vs 女) =", round(exp(coef(cox)["sex"]), 3), "\n")
+cat("HR(sex 每+1单位, 女 vs 男) =", round(exp(coef(cox)["sex"]), 3), "\n")
 
 cat("\n== 步骤 5：KM 图落盘 ==\n")
 out_png <- file.path(if (grepl("cases$", getwd())) ".." else ".",

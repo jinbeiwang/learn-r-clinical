@@ -1,0 +1,193 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>案例 C2 生存分析 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="../assets/site.css"><link rel="icon" href="../assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="../index.html"><img src="../assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="../index.html#toc">全书目录</a><a href="../ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="../index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="../ch0-environment.html">0 起步与环境</a>
+<a href="../ch1-r-basics.html">1 R 语言基础</a>
+<a href="../ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="../ch3-stats.html">3 统计分析</a>
+<a href="../ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="../ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="../ch6-pkgdev.html">6 R 包开发</a>
+<a href="../ch7-shiny.html">7 Shiny 与交互</a>
+<a href="../ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a class="on" href="c2-survival.html">C2 生存分析</a>
+<a href="c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="c4-nhanes.html">C4 NHANES 加权</a>
+<a href="c5-trials-landscape.html">C5 试验景观</a>
+<a href="c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="../index.html">全书目录</a> / 实战案例</div>
+<div class="chapnum">C2</div>
+<h1>生存分析：KM、log-rank 与 Cox</h1>
+<p class="lede">PROC LIFETEST + PROC PHREG 是肿瘤项目 SAS 程序员的日常。这个案例用 R 的 survival 包在同一份经典公开数据上复刻全流程：KM 估计 → log-rank 检验 → Cox 多变量模型 → KM 图落盘，一路给你 SAS 对照坐标。</p>
+
+<h2 id="sc2-0">背景与学习目标</h2>
+<p>数据是 NCCTG 肺癌试验（<code class="inl">survival::lung</code>），228 例晚期肺癌患者的随访记录，是生存分析教学的事实标准数据集。脚本为 <code class="inl">cases/c2_survival.R</code>，仓库根目录下 <code class="inl">Rscript cases/c2_survival.R</code> 即可复现。学完你应当能够：</p>
+<ul>
+<li><strong>目标 1</strong>：用 <code class="inl">Surv()</code> 构造生存对象、<code class="inl">survfit()</code> 估计分组 KM 曲线并读懂中位生存期与置信区间（对照 PROC LIFETEST）。</li>
+<li><strong>目标 2</strong>：用 <code class="inl">survdiff()</code> 做 log-rank 检验比较组间生存分布。</li>
+<li><strong>目标 3</strong>：用 <code class="inl">coxph()</code> 拟合多变量 Cox 模型（对照 PROC PHREG），正确解释 HR 的方向与参考水平，并用 survminer 输出带 risk table 的 KM 图。</li>
+</ul>
+<div class="note"><strong>数据源：</strong>survival::lung — NCCTG（North Central Cancer Treatment Group）肺癌试验数据，228 例晚期肺癌患者，含生存时间、删失状态、年龄、性别、ECOG 评分（ph.ecog）等变量 · 获取方式：R 包 survival 内置（<code class="inl">data(lung)</code> 或直接引用），随 R 安装即得、无需联网 · 许可：公开教学数据，广泛用于教材与课程。</div>
+
+<h2 id="sc2-1">步骤 1：数据与清洗</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r"># C2：公开肿瘤试验生存分析（survival::lung，NCCTG 肺癌试验）
+# 运行：Rscript cases/c2_survival.R
+suppressPackageStartupMessages({
+  library(survival); library(survminer); library(ggplot2)
+})
+
+cat("== 步骤 1：数据与清洗 ==\n")
+dat &lt;- lung
+dat$status &lt;- dat$status - 1   # survival::lung 的 status 为 1=删失 2=死亡 → 转 0/1
+cat("n =", nrow(dat), "；事件数 =", sum(dat$status), "；删失 =", sum(dat$status == 0), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 1：数据与清洗 ==
+n = 228 ；事件数 = 165 ；删失 = 63 </pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">dat$status &lt;- dat$status - 1</code>：全案例最关键的一行。lung 的原始 status 编码是 1=删失、2=死亡，而 <code class="inl">Surv()</code> 的惯例是 0=删失、1=事件——减 1 完成转换。SAS 等价：<code class="inl">death = (status = 2);</code> 或 <code class="inl">status01 = status - 1;</code>。</li>
+<li>拿到任何公开数据先做"事件/删失"清点：165 + 63 = 228，对得上——相当于先看 PROC LIFETEST 日志首页的 censored 汇总，再决定往下走。</li>
+<li>不清洗直接建模不会报错，但结果全错且无警告——这类"静默错误"比 SAS 的 log ERROR 更危险，务必养成核对编码的习惯。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>PROC LIFETEST 里你写 <code class="inl">time*status(1)</code>，括号里声明的是<em>删失值</em>；而 R 的 <code class="inl">Surv(time, status)</code> 默认 status 非零即事件。两边"谁是 1"的语义相反，照搬编码必翻车——先统一成 0/1，再进任何模型。</div>
+
+<h2 id="sc2-2">步骤 2：KM 按性别分层（survfit ↔ PROC LIFETEST）</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 2：KM 按性别分层 ==\n")
+fit &lt;- survfit(Surv(time, status) ~ sex, data = dat)
+print(fit)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 2：KM 按性别分层 ==
+Call: survfit(formula = Surv(time, status) ~ sex, data = dat)
+
+        n events median 0.95LCL 0.95UCL
+sex=1 138    112    270     212     310
+sex=2  90     53    426     348     550</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">Surv(time, status)</code> 构造生存对象（时间 + 事件指示），<code class="inl">~ sex</code> 声明分层变量——整句对应 <code class="inl">proc lifetest data=dat; time time*status(0); strata sex;</code>，公式接口一行搞定。</li>
+<li><code class="inl">survfit()</code> 默认 Kaplan-Meier 估计；print 给出每组 n、事件数、中位生存期及 95%CI（默认补数法），即 LIFETEST 的 "Median Survival" 表。</li>
+<li>读结果：sex=1（男）中位 270 天（95%CI 212–310），sex=2（女）426 天（348–550）——女性中位生存几乎多出半年，两组 CI 不重叠，差异肉眼可判。</li>
+</ol></div>
+
+<h2 id="sc2-3">步骤 3：log-rank 检验（survdiff）</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 3：log-rank 检验 ==\n")
+print(survdiff(Surv(time, status) ~ sex, data = dat))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 3：log-rank 检验 ==
+Call:
+survdiff(formula = Surv(time, status) ~ sex, data = dat)
+
+        N Observed Expected (O-E)^2/E (O-E)^2/V
+sex=1 138      112     91.6      4.55      10.3
+sex=2  90       53     73.4      5.68      10.3
+
+ Chisq= 10.3  on 1 degrees of freedom, p= 0.001 </pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">survdiff()</code> 默认 log-rank 检验，对应 PROC LIFETEST "Equality of Survival Curves" 表里的 Log-Rank 行：Chisq=10.3、df=1、p=0.001，组间生存分布差异显著。</li>
+<li>Observed/Expected 列可以直接读方向：男性组观测死亡 112 > 期望 91.6，女性组观测 53 < 期望 73.4——男性死亡"超发"。</li>
+<li>两组时 <code class="inl">(O-E)^2/V</code> 每行都是同一个统计量（10.3），多组时才需要看整体卡方 + 两两比较。</li>
+<li>想换检验口径（如 Wilcoxon/Gehan）加参数 <code class="inl">rho=1</code>；SAS 侧对应 <code class="inl">test w</code> 选项——概念一一对应。</li>
+</ol></div>
+
+<h2 id="sc2-4">步骤 4：Cox 多变量模型（coxph ↔ PROC PHREG）</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 4：Cox 多变量模型 ==\n")
+cox &lt;- coxph(Surv(time, status) ~ age + sex + ph.ecog, data = dat)
+print(summary(cox)$coefficients)
+cat("HR(sex 每+1单位, 女 vs 男) =", round(exp(coef(cox)["sex"]), 3), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 4：Cox 多变量模型 ==
+               coef exp(coef)    se(coef)         z     Pr(&gt;|z|)
+age      0.01106676 1.0111282 0.009267411  1.194159 2.324157e-01
+sex     -0.55261240 0.5754446 0.167739054 -3.294477 9.860514e-04
+ph.ecog  0.46372848 1.5899912 0.113577266  4.082934 4.447067e-05
+HR(sex 每+1单位, 女 vs 男) = 0.575 </pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">coxph()</code> 即 PROC PHREG：同一份系数表（coef / exp(coef) / se / z / p），Efron 法处理并列（SAS 默认也是 Efron）。</li>
+<li>ph.ecog 的 HR=1.59（p&lt;0.001）：ECOG 体力状态每恶化 1 分，死亡风险约升 59%——临床上最强的预后因子，符合预期。</li>
+<li>age 的 HR=1.011、p=0.23：校正性别与 ECOG 后年龄不显著。</li>
+<li><strong>方向陷阱</strong>：lung 的 sex 是数值编码 1=男、2=女。R 把它当连续变量，<code class="inl">exp(coef)=0.575</code> 的真实含义是"sex 每 +1 单位（男→女）"的 HR，即<em>女性</em>死亡风险约为男性的 57.5%。本脚本的 cat 标签已修正为方向自明版本；但审旧代码时常见 "HR(男 vs 女)" 这类含糊标签——SAS 里你会写 <code class="inl">class sex; ref='1'</code> 让标签自明，R 里则应 <code class="inl">factor(sex, levels=c(1,2), labels=c("Male","Female"))</code> 或至少把方向写进注释。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>在 PHREG 里你习惯了 <code class="inl">class</code> 语句自动做哑变量并指定参考水平；coxph 里数值型变量一律按"每增加 1 单位"进模型，多水平分类变量若不 factor 化，得到的 HR 可能根本不是你想要的对比。递交级程序里，分类协变量必须先显式 factor 并声明水平顺序。</div>
+
+<h2 id="sc2-5">步骤 5：KM 图落盘（ggsurvplot）</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 5：KM 图落盘 ==\n")
+out_png &lt;- file.path(if (grepl("cases$", getwd())) ".." else ".",
+                     "docs", "run-outputs", "c2_km.png")
+p &lt;- ggsurvplot(fit, data = dat, pval = TRUE, conf.int = FALSE,
+                risk.table = TRUE, palette = c("#7d8f4e", "#b0413e"),
+                xlab = "Days", ylab = "Survival probability")
+ggsave(out_png, print(p), width = 8, height = 6, dpi = 150)
+cat("KM 图已保存:", out_png, "；文件大小 =", file.size(out_png), "bytes\n")
+cat("== C2 完成 ==\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 5：KM 图落盘 ==
+KM 图已保存: ./docs/run-outputs/c2_km.png ；文件大小 = 5187 bytes
+== C2 完成 ==</pre>
+<p>实跑产物（KM 曲线 + 底部 risk table，即"在险人数表"）：</p>
+<p><img src="../docs/run-outputs/c2_km.png" alt="按性别分层的 Kaplan-Meier 生存曲线（含 log-rank p 值与 risk table）" style="max-width:100%"></p>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">ggsurvplot()</code> 一步拼齐递交级 KM 图：曲线 + log-rank p 值（pval=TRUE）+ 底部在险人数表（risk.table=TRUE）——SAS 里这要用 LIFETEST 的 ODS 图形再加一段 atrisk 数据步拼装。</li>
+<li><code class="inl">palette</code> 显式指定两色，图表用色进代码而非手工调 GUI——可复现、可审阅。</li>
+<li><code class="inl">ggsave(..., width=8, height=6, dpi=150)</code>：尺寸与分辨率也是规格的一部分，类比 ODS 的 <code class="inl">options(orientation/size)</code> 与 RTF 模板设置；产物落 docs/run-outputs/ 便于 QC 归档。</li>
+</ol></div>
+<div class="quiz" data-answer="A">
+<p class="quiz-q">测验：C2 开头为什么必须执行 dat$status &lt;- dat$status - 1？</p>
+<button class="quiz-opt" data-opt="A">survival::lung 原始 status 为 1=删失、2=死亡，而 Surv() 惯例是 0=删失、1=事件，减 1 完成编码转换</button>
+<button class="quiz-opt" data-opt="B">把随访时间整体前移一天，避免 0 值参与计算</button>
+<button class="quiz-opt" data-opt="C">剔除数据集的第一条记录以对齐 SAS 导出</button>
+<div class="quiz-exp">选 A。Surv(time, status) 把非零 status 一律当"事件"；若不转换，原编码 1=删失、2=死亡两个值都非零，会被解读为"228 例全部发生事件"，删失信息完全丢失，KM 与 Cox 全错且<em>不报任何警告</em>。这是公开数据实战的第一课：先核对事件编码，再进模型。</div>
+</div>
+
+<h2 id="sc2-6">解读要点</h2>
+<ul>
+<li><strong>一个包顶两个 PROC</strong>：survival = PROC LIFETEST + PROC PHREG 的合体，公式接口（<code class="inl">Surv(time, status) ~ covariates</code>）统一贯穿估计、检验与建模。</li>
+<li><strong>事件编码是第一道 QC</strong>：0=删失、1=事件的惯例与 lung 原始编码相反；任何公开数据/外部数据先 <code class="inl">table(status)</code> 清点再动手。</li>
+<li><strong>HR 方向必须说清参考</strong>：数值型分类变量按"每 +1 单位"进模型，sex 的 HR=0.575 实为女 vs 男；递交程序里先 factor 化并声明水平。</li>
+<li><strong>证据三件套</strong>：中位生存 270 vs 426、log-rank p=0.001、校正后 Cox 仍显著（HR=0.575，p&lt;0.001）——单变量到多变量结论一致，这正是审评问答里"稳健性"的最小示范。</li>
+</ul>
+
+<h2 id="sc2-7">练习</h2>
+<ol>
+<li>（易）KM 按 ph.ecog 分层：取 <code class="inl">dat2 &lt;- subset(dat, ph.ecog %in% 0:1)</code>，<code class="inl">survfit(Surv(time, status) ~ factor(ph.ecog), data = dat2)</code> 并跑 survdiff，比较 ECOG 0 与 1 两组的生存差异，与按性别的结论对照。</li>
+<li>（中）Cox 加 age×sex 交互：<code class="inl">coxph(Surv(time, status) ~ age * sex + ph.ecog, data = dat)</code>，看交互项 p 值是否显著，并解释交互的含义（age 的效应是否随性别不同而不同）；若显著，写出男/女各自的 age 斜率。</li>
+<li>（难）用 flexsurv 做参数生存模型：<code class="inl">flexsurvreg(Surv(time, status) ~ sex + age + ph.ecog, data = dat, dist = "weibull")</code>，再换 dist="exp"、"llogis"、"gompertz"，比较各模型 AIC 选优，并与 Cox 半参数结论对照——体会"参数假设换效率"的取舍。</li>
+</ol>
+
+<h2 id="sc2-8">扩展阅读</h2>
+<section class="res">
+<ul>
+<li><a href="https://data.projectdatasphere.org">Project Data Sphere</a> — 注册制公开肿瘤试验数据平台，可申请真实试验级数据练手 <span class="tag">数据</span></li>
+<li><a href="https://hbiostat.org/data/">hbiostat Data Archive</a> — Frank Harrell 维护的教学数据仓库（含 GUSTO、SUPPORT 等经典生存数据） <span class="tag">数据</span></li>
+</ul>
+</section>
+<p class="lede">下一案例：离开试验数据，直接连 FDA 的真实世界安全数据库——用 openFDA API 做一次诚实的信号检测。</p>
+</article></main>
+<aside class="toc">
+<a href="#sc2-0">背景与学习目标</a>
+<a href="#sc2-1">步骤 1 数据与清洗</a>
+<a href="#sc2-2">步骤 2 KM 分层</a>
+<a href="#sc2-3">步骤 3 log-rank</a>
+<a href="#sc2-4">步骤 4 Cox 模型</a>
+<a href="#sc2-5">步骤 5 KM 图落盘</a>
+<a href="#sc2-6">解读要点</a>
+<a href="#sc2-7">练习</a>
+<a href="#sc2-8">扩展阅读</a>
+</aside>
+</div>
+<script src="../assets/site.js"></script></body></html>

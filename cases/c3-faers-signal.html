@@ -1,0 +1,219 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>案例 C3 FAERS 信号检测 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="../assets/site.css"><link rel="icon" href="../assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="../index.html"><img src="../assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="../index.html#toc">全书目录</a><a href="../ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="../index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="../ch0-environment.html">0 起步与环境</a>
+<a href="../ch1-r-basics.html">1 R 语言基础</a>
+<a href="../ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="../ch3-stats.html">3 统计分析</a>
+<a href="../ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="../ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="../ch6-pkgdev.html">6 R 包开发</a>
+<a href="../ch7-shiny.html">7 Shiny 与交互</a>
+<a href="../ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="c2-survival.html">C2 生存分析</a>
+<a class="on" href="c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="c4-nhanes.html">C4 NHANES 加权</a>
+<a href="c5-trials-landscape.html">C5 试验景观</a>
+<a href="c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="../index.html">全书目录</a> / 实战案例</div>
+<div class="chapnum">C3</div>
+<h1>FAERS 安全信号检测：一次"未检出"的诚实教学</h1>
+<p class="lede">药物警戒的经典入门题：从 FDA 不良事件报告系统（FAERS）里检测 imatinib 与周围性水肿的不成比例信号。本案例用 openFDA 免 key API 拉数、R 内聚合、手算 ROR/PRR——并且如实呈现：截断样本算出 ROR=0.29，未检出信号。这个"失败"结果恰是全案例最值钱的一课。</p>
+
+<h2 id="sc3-0">背景与学习目标</h2>
+<p>不成比例分析（disproportionality：ROR/PRR/EBGM）是上市后信号检测的主力方法，SAS 侧你熟悉的是 <code class="inl">PROC FREQ tables group*ae / measures chisq</code> 的 2×2 套路。本案例把"取数→清洗→分析→判读"整条链放进一个 R 脚本（<code class="inl">cases/c3_faers_signal.R</code>，仓库根目录 <code class="inl">Rscript cases/c3_faers_signal.R</code> 复现；首次联网运行会缓存到 <code class="inl">cases/cache/</code>，之后断网也能重跑）。学完你应当能够：</p>
+<ul>
+<li><strong>目标 1</strong>：用 httr2 分页调用 openFDA FAERS API 拉取报告级不良事件数据，理解嵌套 JSON 的 PT 抽取，并搭建 tryCatch + saveRDS/readRDS 的离线缓存回退。</li>
+<li><strong>目标 2</strong>：聚合 MedDRA PT 频数、构建 2×2 表，手算 ROR、PRR 与 95%CI（对数正态法），并套用"CI 下限 &gt; 1 且 a ≥ 3"的教学判读口径。</li>
+<li><strong>目标 3</strong>：诚实解读局限性——理解为什么本例对已知 ADR 算出了 ROR=0.29，说清截断背景组偏倚，知道监管级信号检测的正确姿势。</li>
+</ul>
+<div class="note"><strong>数据源：</strong>openFDA FAERS（FDA Adverse Event Reporting System）<code class="inl">drug/event</code> API · 获取方式：HTTPS GET，免注册、免 API key（无 key 时每页上限 100 条且有日配额；本例药物组与背景组各分页拉取 5 页 × 100 份报告）· 许可：美国政府公共数据（public domain），openFDA 服务条款见 <a href="https://open.fda.gov/license/">open.fda.gov/license</a>。</div>
+
+<h2 id="sc3-1">封装：分页拉取函数与离线缓存</h2>
+<p>先把"取数"封装成一个可复用函数：<code class="inl">count_pt(search, cache_name)</code>——传入 API 查询条件与缓存文件名，返回按 PT 汇总的频数表；网络失败自动回退读缓存。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># C3：FAERS 安全信号检测（openFDA API 双查询；离线回退 cases/cache/）
+# 运行：Rscript cases/c3_faers_signal.R
+suppressPackageStartupMessages({ library(httr2); library(jsonlite); library(dplyr) })
+
+cachedir &lt;- file.path(if (grepl("cases$", getwd())) ".." else ".", "cases", "cache")
+dir.create(cachedir, showWarnings = FALSE, recursive = TRUE)
+
+count_pt &lt;- function(search = NULL, cache_name) {
+  cf &lt;- file.path(cachedir, cache_name)
+  get_it &lt;- function() {
+    pages &lt;- list()
+    for (sk in seq(0, 400, by = 100)) {
+      q &lt;- list(limit = 100, skip = sk)
+      if (!is.null(search)) q$search &lt;- search
+      r &lt;- request("https://api.fda.gov/drug/event.json") %&gt;%
+        req_url_query(!!!q) %&gt;%
+        req_timeout(120)
+      js &lt;- resp_body_json(req_perform(r))
+      pages[[length(pages) + 1]] &lt;- js$results
+    }
+    results &lt;- unlist(pages, recursive = FALSE)
+    pts &lt;- unlist(lapply(results, function(x)
+      unlist(lapply(x$patient$reaction, function(r) r$reactionmeddrapt))))
+    stopifnot(length(pts) &gt; 0)
+    tb &lt;- sort(table(pts), decreasing = TRUE)
+    data.frame(PT = names(tb), N = as.integer(tb), stringsAsFactors = FALSE)
+  }
+  tryCatch({
+    d &lt;- get_it()
+    saveRDS(d, cf); d
+  }, error = function(e) {
+    cat("[cache] 网络失败:", conditionMessage(e), "\n读取:", cf, "\n"); readRDS(cf)
+  })
+}</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">for (sk in seq(0, 400, by = 100))</code>：免 key 时每页最多 100 条，用 skip=0,100,...,400 翻 5 页，每组共 500 份报告；<code class="inl">req_url_query(!!!q)</code> 是 httr2 的动态参数拼接（把 list 展开成 limit/skip/search 查询串）。</li>
+<li><code class="inl">resp_body_json()</code> 直接得到嵌套 list：每份报告的 AE 藏在 <code class="inl">patient$reaction</code> 数组里，两层 <code class="inl">lapply + unlist</code> 抽出所有 <code class="inl">reactionmeddrapt</code>——对应 SAS 里用 <code class="inl">libname x json</code> 引擎映射嵌套表的活儿，R 里十行内解决。</li>
+<li><code class="inl">stopifnot(length(pts) &gt; 0)</code>：断言拉到非空数据，否则立即报错——类比 SAS 宏里的 <code class="inl">%if %sysfunc(countw(...))=0 %then %abort</code>；宁炸勿错。</li>
+<li><code class="inl">sort(table(pts), decreasing=TRUE)</code>：PT 频数降序表，等价于 PROC FREQ 的 <code class="inl">order=freq</code>。</li>
+<li><code class="inl">tryCatch(成功→saveRDS, 失败→cat+readRDS)</code>：网络案例的可复现性保险——首跑成功即缓存到 cases/cache/，之后断网/限流也能重跑出同样结果；递交语境下这就是"数据来源可追溯、分析可离线复现"。</li>
+</ol></div>
+
+<h2 id="sc3-2">步骤 1：双组取数（imatinib 组 vs 背景组）</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("== 步骤 1：分页拉取报告级 AE（5 页 x 100 报告/组，免 API key；R 内聚合 PT）==\n")
+drug &lt;- count_pt('patient.drug.openfda.generic_name:"imatinib"', "faers_imatinib.rds")
+bg   &lt;- count_pt(NULL, "faers_background.rds")
+cat("imatinib 组 PT 提及合计:", sum(drug$N), "（来自 500 份报告）；背景组:", sum(bg$N), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 1：分页拉取报告级 AE（5 页 x 100 报告/组，免 API key；R 内聚合 PT）==
+imatinib 组 PT 提及合计: 2051 （来自 500 份报告）；背景组: 1275 </pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>2×2 分析需要两组：药物组用 <code class="inl">openfda.generic_name:"imatinib"</code> 过滤；背景组 search=NULL，即 API 默认序（最新报告）的前 500 份，充当"全库"对照——<em>这个近似正是后面结论翻车的伏笔</em>。</li>
+<li>PT 提及合计：imatinib 组 2051 / 500 份 ≈ 每份 4.1 个 AE；背景组 1275 / 500 ≈ 2.55 个。肿瘤药报告天然携带更多 AE 条目，两组"每报告 AE 密度"不可比——结构性差异已经出现。</li>
+<li>一份报告多个 reaction，所以频数表按"PT 提及次数"计而非按报告数计；监管级做法常需去重到报告级并处理同一报告重复 PT，这里保持教学简化。</li>
+</ol></div>
+
+<h2 id="sc3-3">步骤 2：imatinib AE 频数 Top10</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 2：imatinib AE 频数 Top10 ==\n")
+print(drug %&gt;% arrange(desc(N)) %&gt;% slice_head(n = 10), row.names = FALSE)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 2：imatinib AE 频数 Top10 ==
+                              PT  N
+                           Death 79
+                          Nausea 47
+                       Diarrhoea 46
+                         Fatigue 36
+       Second primary malignancy 34
+  Malignant neoplasm progression 30
+                        Vomiting 29
+                Drug ineffective 26
+                   Muscle spasms 26
+ Gastrointestinal stromal tumour 25</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">arrange(desc(N)) %&gt;% slice_head(n = 10)</code>：等价于 PROC SORT 降序 + <code class="inl">proc print data=...(obs=10)</code>；<code class="inl">row.names = FALSE</code> 让打印干净。</li>
+<li>Top10 里有临床"熟脸"：Nausea/Diarrhoea/Vomiting 是 imatinib 说明书级常见 AE；Muscle spasms（26 次）更是 imatinib 的特征性反应——即便截断样本，药理信号也隐约可见。</li>
+<li>Death、Malignant neoplasm progression、GIST 本身高频出现，说明报告群以晚期肿瘤患者为主——适应症混杂（confounding by indication）是自愿报告库的底色，解读任何 PT 频数都要带着这层背景。</li>
+</ol></div>
+
+<h2 id="sc3-4">步骤 3：2×2 不成比例分析（ROR / PRR）</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 3：2x2 不成比例分析（目标 PT = Oedema peripheral）==\n")
+target &lt;- "Oedema peripheral"
+if (!target %in% drug$PT) target &lt;- drug$PT[1]
+cat("目标 PT:", target, "\n")
+n_of &lt;- function(d, pt) { v &lt;- d$N[d$PT == pt]; if (length(v)) v else 0L }
+a &lt;- n_of(drug, target)          # 药 + 目标AE
+b &lt;- sum(drug$N) - a             # 药 + 其他AE（Top1000 近似）
+c &lt;- n_of(bg, target)            # 背景 + 目标AE
+d &lt;- sum(bg$N) - c               # 背景 + 其他AE
+tab &lt;- matrix(c(a, b, c, d), nrow = 2, byrow = TRUE,
+              dimnames = list(Group = c("imatinib", "background"),
+                              AE = c(target, "other PTs")))
+print(tab)
+ror &lt;- (a * d) / (b * c)
+se &lt;- sqrt(1/a + 1/b + 1/c + 1/d)
+prr &lt;- (a / (a + b)) / (c / (c + d))
+cat(sprintf("ROR = %.2f (95%%CI %.2f - %.2f)；PRR = %.2f\n",
+            ror, exp(log(ror) - 1.96 * se), exp(log(ror) + 1.96 * se), prr))
+if (a &gt;= 3 &amp;&amp; exp(log(ror) - 1.96 * se) &gt; 1) {
+  cat("判读：ROR 95%CI 下限 &gt; 1 且 a &gt;= 3 → 不成比例信号（教学口径）。\n")
+} else {
+  cat("判读：本截断样本未检出不成比例信号。注意免 key 分页背景组不代表全库暴露结构，\n",
+      "    ROR 可能低估/高估；监管级信号检测需用全量 FAERS 季度文件与规范对照。\n")
+}
+cat("== C3 完成 ==\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 3：2x2 不成比例分析（目标 PT = Oedema peripheral）==
+目标 PT: Oedema peripheral 
+            AE
+Group        Oedema peripheral other PTs
+  imatinib                   8      2043
+  background                17      1258
+ROR = 0.29 (95%CI 0.12 - 0.67)；PRR = 0.29
+判读：本截断样本未检出不成比例信号。注意免 key 分页背景组不代表全库暴露结构，
+     ROR 可能低估/高估；监管级信号检测需用全量 FAERS 季度文件与规范对照。
+== C3 完成 ==</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>2×2 四格：a=8（imatinib + 周围性水肿）、b=2043（imatinib + 其他 PT）、c=17（背景 + 周围性水肿）、d=1258（背景 + 其他 PT）；<code class="inl">n_of()</code> 是查不到就返回 0 的安全取值器，避免空向量污染算术。</li>
+<li>公式手算而非黑盒：<code class="inl">ROR = ad/bc</code>；<code class="inl">se = sqrt(1/a+1/b+1/c+1/d)</code> 是 log(ROR) 的标准误，95%CI 在对数尺度 ±1.96se 后指数还原；PRR = 组内比例之比。对应 SAS 的 <code class="inl">proc freq; tables Group*AE / relrisk measures; </code>——R 里你亲手写公式，反而更清楚每个数的来历。</li>
+<li>教学判读口径：<code class="inl">a ≥ 3 且 ROR 95%CI 下限 &gt; 1</code> 才算不成比例信号。本例 CI 为 0.12–0.67，上限都够不着 1——走向 else 分支，"未检出"。</li>
+<li><strong>诚实面对结果</strong>：周围性水肿是 imatinib 说明书收载的已知 ADR（试验中发生率可高达约一半），照理应是"阳性对照"。本例 ROR=0.29 不是 API 出错，而是<em>截断背景组偏倚</em>：背景组只是全库最新 500 份报告，其中周围性水肿占比 17/1275≈1.33%，反而高于 imatinib 组的 8/2051≈0.39%——水肿是海量药物（降压药、NSAIDs、噻唑烷二酮类等）的高频报告 PT，"最新 500 份"恰好把它垫得很高；同时 imatinib 组的 PT 结构被 Death/肿瘤进展等肿瘤事件主导，进一步稀释了水肿的相对占比。</li>
+<li>监管级做法：下载全量 FAERS 季度 ASCII 文件（数千万报告），做规范清洗（去重、MedDRA 版本对齐），对照选全库或同 ATC 类/同适应症，还要考虑掩蔽效应（masking）与 Weber 效应——本脚本的价值是让你用 60 行代码<em>亲手撞见</em>这些偏倚，而不是背名词。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>把这套结果当成"PROC FREQ 换个皮"就完事。SAS 里你通常拿到的已经是清洗好的全量提取数据集，2×2 只是最后一步；而本案例中<em>取数设计</em>（背景组怎么选、分页截断多少）才决定结论方向。信号检测的第一质量问题从来不在统计量，而在对照组的构造。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：周围性水肿本是 imatinib 说明书收载的已知不良反应，本例却算出 ROR=0.29（95%CI 0.12–0.67）"未检出信号"。最主要的原因是？</p>
+<button class="quiz-opt" data-opt="A">imatinib 与周围性水肿确实无关联，文献记载有误</button>
+<button class="quiz-opt" data-opt="B">背景组只是免 key 分页拉到的 500 份最新报告，不能代表全库的暴露与报告结构，截断造成比较组偏倚</button>
+<button class="quiz-opt" data-opt="C">openFDA API 返回的频数本身有错，重跑即可检出</button>
+<div class="quiz-exp">选 B。ROR 是相对量，分母（背景组）的质量决定结论：本例背景组中周围性水肿占比（≈1.33%）被"最新 500 份报告"里大量心血管/镇痛药物报告垫高，而 imatinib 组的 PT 结构又被肿瘤事件主导（每报告 AE 密度 4.1 vs 2.55），两头挤压之下 ROR 被严重压低。API 数据本身没错，错在对照构造——这正是监管级检测必须用全量 FAERS 季度文件并规范选对照的原因。</div>
+</div>
+
+<h2 id="sc3-5">解读要点</h2>
+<ul>
+<li><strong>ROR/PRR 公式透明化</strong>：ad/bc 与对数尺度 CI 手写在脚本里，对照 PROC FREQ /MEASURES 的输出你会更明白每个数字的来历——统计量不是黑盒。</li>
+<li><strong>"未检出"是真结果，不美化</strong>：ROR=0.29 如实落盘、如实判读；已知 ADR 在劣质对照下消失，恰恰演示了不成比例分析对背景组的极端敏感。</li>
+<li><strong>背景组质量决定信号检测成败</strong>：500 份最新报告 ≠ 全库暴露结构；监管级需要全量季度文件 + 清洗去重 + 合理对照（全库/同类药），并警惕掩蔽与适应症混杂。</li>
+<li><strong>网络案例的工程纪律</strong>：tryCatch + saveRDS/readRDS 缓存回退让"联网分析"可离线复现——可复现性是 GxP 世界里对一切外部数据源的底线要求。</li>
+<li><strong>自愿报告库的天性</strong>：漏报、报告质量参差、肿瘤药背景里全是肿瘤事件；不成比例分析只是信号的第一道筛子，后续还需要病例级审阅与流行病学验证。</li>
+</ul>
+
+<h2 id="sc3-6">练习</h2>
+<ol>
+<li>（易）换一种药重跑频数表：把 search 改成如 <code class="inl">'patient.drug.openfda.generic_name:"metformin"'</code>（记得换缓存文件名），对比 Top10 PT 构成——慢病药与肿瘤药的报告结构差异一目了然。</li>
+<li>（中）换目标 PT 重算 ROR：把 target 改成 "Muscle spasms" 或 "Diarrhoea"，重算 2×2 与 ROR/PRR/95%CI，观察在同样的截断背景组下，imatinib 的特征性 AE 能否"顶穿"偏倚检出信号，并解释为什么 Muscle spasms 更有希望。</li>
+<li>（难）按年分层看信号时间趋势：扩展 count_pt 的查询参数，在 search 里追加 <code class="inl">AND receivedate:[20150101 TO 20151231]</code> 这类日期区间（每年一组、各自缓存），逐年重算目标 PT 的 ROR，画出年度趋势——体会 Weber 效应（上市后头几年报告膨胀）需要怎样的数据量才压得住。</li>
+</ol>
+
+<h2 id="sc3-7">扩展阅读</h2>
+<section class="res">
+<ul>
+<li><a href="https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html">FAERS 季度 ASCII 文件官方下载页</a> — 监管级分析的正确起点：全量季度文件 + DEMO/DRUG/REAC 结构说明 <span class="tag">数据</span></li>
+<li><a href="https://www.immport.org">ImmPort</a> — 免疫学研究开放数据平台（含临床试验与 FAERS 衍生研究数据，需注册申请） <span class="tag">数据</span></li>
+<li><a href="https://open.fda.gov/apis/drug/event/">openFDA Drug Event API 文档</a> — 查询语法、分页与配额限制的官方说明 <span class="tag">参考</span></li>
+</ul>
+</section>
+<p class="lede">下一案例：从药物警戒转向人群健康——NHANES 复杂抽样设计与调查权重的 R 实现。</p>
+</article></main>
+<aside class="toc">
+<a href="#sc3-0">背景与学习目标</a>
+<a href="#sc3-1">封装：取数与缓存</a>
+<a href="#sc3-2">步骤 1 双组取数</a>
+<a href="#sc3-3">步骤 2 频数 Top10</a>
+<a href="#sc3-4">步骤 3 ROR / PRR</a>
+<a href="#sc3-5">解读要点</a>
+<a href="#sc3-6">练习</a>
+<a href="#sc3-7">扩展阅读</a>
+</aside>
+</div>
+<script src="../assets/site.js"></script></body></html>

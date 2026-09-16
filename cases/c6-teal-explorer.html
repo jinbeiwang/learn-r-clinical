@@ -1,0 +1,193 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>实战案例 C6 · teal 临床数据探索器 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="../assets/site.css"><link rel="icon" href="../assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="../index.html"><img src="../assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="../index.html#toc">全书目录</a><a href="../ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="../index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="../ch0-environment.html">0 起步与环境</a>
+<a href="../ch1-r-basics.html">1 R 语言基础</a>
+<a href="../ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="../ch3-stats.html">3 统计分析</a>
+<a href="../ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="../ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="../ch6-pkgdev.html">6 R 包开发</a>
+<a href="../ch7-shiny.html">7 Shiny 与交互</a>
+<a href="../ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="c2-survival.html">C2 生存分析</a>
+<a href="c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="c4-nhanes.html">C4 NHANES 加权</a>
+<a href="c5-trials-landscape.html">C5 试验景观</a>
+<a class="on" href="c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="../index.html">全书目录</a> / 实战案例</div>
+<div class="chapnum">C6</div>
+<h1>teal 探索器：把 ADaM 装进可过滤、可复现的交互应用</h1>
+<p class="lede">SAS 的探索方式是"改 where 语句、重跑、翻 ODS 输出"；teal 的方式是"左侧拉过滤器、右侧即时重算、代码还能导出复现"。本案例复用 C1 的 ADaM 推导，用 pharmaverse 的 teal 框架组装一个多模块数据浏览器，并借它讲清 reactive（反应式）这个 Shiny 核心概念。</p>
+
+<h2 id="sC6-1">C6.1 背景与学习目标</h2>
+<p><a href="https://pharmaverse.github.io/teal/">teal</a> 是 pharmaverse 生态（与 admiral、pharmaversesdtm 同源，见 C1）的 Shiny 应用框架，专为<strong>临床数据探索与交互式 TLF 审阅</strong>设计：数据装在 <code class="inl">teal_data</code> 容器里，过滤器面板生成的筛选与派生代码全部<strong>记录为可导出的 R 表达式</strong>——探索结果可复现，这一点直击监管对"数据切片从哪来"的审计需求。R 大厂（Roche 等）已用它做内部数据浏览。</p>
+<p>学完本案例，你应能：</p>
+<ol>
+<li>复用 <code class="inl">cases/common.R</code> 的 ADaM 推导产出 ADSL/ADAE，并装入 <code class="inl">teal_data()</code> 容器、用 <code class="inl">within()</code> 在容器内做合并派生；</li>
+<li>用 <code class="inl">init(data, modules)</code> 组装 teal 应用，看懂自定义 <code class="inl">module()</code> 的三件套：ui / server / datanames；</li>
+<li>理解模块 server 里的 <code class="inl">data</code> 是 reactive 函数——写 <code class="inl">data()</code> 才能拿到"过滤面板当前筛选后"的数据，过滤器一变图表自动重算。</li>
+</ol>
+
+<h2 id="sC6-2">C6.2 数据源</h2>
+<div class="note"><strong>数据源：</strong>复用 <a href="c1-sdtm-adam-t1.html">C1 案例</a>的 ADaM 推导——<code class="inl">source("cases/common.R")</code> 获得 <code class="inl">derive_adsl()</code> 与 <code class="inl">derive_adae()</code>；上游数据来自 pharmaversesdtm 包内置的<strong>合成 SDTM 试验数据</strong>（dm / ae 数据集，非真实受试者），基于 admiral 标准推导生成 ADSL（受试者水平，含 ITTFL 过滤）与 ADAE（不良事件水平）。全离线可跑，无网络依赖。</div>
+
+<h2 id="sC6-3">C6.3 环境：复用 common.R</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r"># C6：teal 临床数据探索器（复用 C1 的 ADaM 推导；非交互模式打印结构）
+# 运行：Rscript cases/c6_teal_explorer.R ；交互：R 会话内 source 后 shiny::runApp(app)
+source(file.path(if (grepl("cases$", getwd())) ".." else ".", "cases", "common.R"))
+suppressPackageStartupMessages({ library(teal); library(shiny) })</code></pre>
+<div class="note">数据推导逻辑与 C1 共用一个 <code class="inl">common.R</code>——静态 Table 1 和交互探索器吃的是同一份 ADaM。这就是 SAS 宏库复用思想在 R 里的对应：一处推导，多处消费，口径天然一致。</div>
+
+<h2 id="sC6-4">C6.4 步骤 1：构造 teal_data 输入</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("== 步骤 1：构造 ADaM 输入 ==\n")
+adsl <- derive_adsl() %>% filter(ITTFL == "Y")
+adae <- derive_adae()
+td <- teal_data(ADSL = adsl, ADAE = adae)
+td <- within(td, {
+  ADAE <- merge(ADAE, ADSL[c("USUBJID", "AGE", "SEX")], by = "USUBJID")
+})
+cat("datanames:", paste(datanames(td), collapse = ", "), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 1：构造 ADaM 输入 ==
+datanames: ADAE, ADSL</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">filter(ITTFL == "Y")</code>：只带 ITT 人群进应用——探索器的分析人群策略应在数据入口处定死，而不是留给每个用户临场筛。</li>
+<li><code class="inl">teal_data(ADSL = adsl, ADAE = adae)</code>：不是普通 list！它是"数据 + 代码环境"的容器：装入时的表达式、之后的每次派生都被记录为可复现代码，对应递交语境里"数据集 + 生成程序"必须成对的审计要求。</li>
+<li><code class="inl">within(td, { ADAE <- merge(...) })</code>：在容器内部派生——把 ADSL 的 AGE/SEX 合并进 ADAE，让 AE 模块能按人口学切片；这段代码同样被 teal 记录。</li>
+<li><code class="inl">datanames(td)</code> 返回容器内数据集清单（按字母序 ADAE, ADSL），模块用它声明自己消费哪些数据。</li>
+</ol></div>
+
+<h2 id="sC6-5">C6.5 步骤 2：组装 teal 应用</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 2：组装 teal 应用 ==\n")
+app <- init(
+  data = td,
+  modules = modules(
+    example_module(label = "通用表格示例"),
+    module(
+      label = "ADSL 年龄直方图",
+      server = function(id, data) {
+        moduleServer(id, function(input, output, session) {
+          output$plot <- renderPlot({
+            d <- data()[["ADSL"]]
+            hist(d$AGE, main = "AGE at trial start", col = "#7d8f4e", border = "white")
+          })
+          renderUI(tags$p("按 ARM 查看请配合 filter 面板使用。"))
+        })
+      },
+      ui = function(id) {
+        ns <- NS(id)
+        tags$div(plotOutput(ns("plot")), uiOutput(ns("txt")))
+      },
+      datanames = "ADSL"
+    )
+  )
+)
+cat("app 类型:", class(app)[1], "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 2：组装 teal 应用 ==
+app 类型: teal_app</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">init(data, modules)</code> 是 teal 的总装线：数据容器 + 模块清单 → 一个可运行的 Shiny 应用对象（class 为 <code class="inl">teal_app</code>）。</li>
+<li><code class="inl">example_module()</code> 是 teal 自带的示例模块，一行就能挂进应用——先用现成模块跑通，再逐步替换成自己的。</li>
+<li>自定义 <code class="inl">module()</code> 三件套：<code class="inl">ui(id)</code> 画界面（用 <code class="inl">NS(id)</code> 命名空间避免输出 ID 冲突）、<code class="inl">server(id, data)</code> 写逻辑、<code class="inl">datanames</code> 声明消费 "ADSL"——teal 据此只把需要的数据集交给该模块。</li>
+<li><code class="inl">data()[["ADSL"]]</code>：注意那对括号！server 收到的 <code class="inl">data</code> 是 <strong>reactive 函数</strong>，调用 <code class="inl">data()</code> 才取到"过滤面板当前筛选后"的最新数据；把它写在 <code class="inl">renderPlot({...})</code> 内部，过滤器一变，图自动重画。</li>
+<li>SAS 对照：等价于用户每改一次 where 条件，你不用重跑程序——teal 替你"自动重跑"了这个模块。</li>
+</ol></div>
+
+<h2 id="sC6-6">C6.6 步骤 3：模块清单（一次真实的"翻车"）</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 3：模块清单 ==\n")
+lbls <- vapply(app$modules, function(m) m$label, character(1))
+print(lbls)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 3：模块清单 ==
+character(0)</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>本意是程序化读出各模块的 label，实跑却得到 <code class="inl">character(0)</code>（长度为 0 的字符向量）。</li>
+<li>原因：<code class="inl">init()</code> 返回的 <code class="inl">teal_app</code> 本质是包装过的 Shiny appobj，<strong>并不以 <code class="inl">$modules</code> 字段暴露内部模块清单</strong>——对 NULL 做 vapply 就返回空向量。这不是 bug，而是"别依赖框架内部结构"的教训。</li>
+<li>正确姿势：模块清单在<strong>组装前</strong>就是你自己写的 <code class="inl">modules(...)</code> 对象，想审计标签就在那里记录；组装后的 app 只适合拿去 <code class="inl">runApp()</code>。</li>
+<li>SAS 对照：如同想从编译好的 SAS 数据集里反读生成它的 DATA step 源码——产物不携带过程，过程要自己留档（这也是 teal_data 记录代码的价值所在）。</li>
+</ol></div>
+
+<h2 id="sC6-7">C6.7 交互运行守卫</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">if (interactive()) {
+  cat("\n交互模式：启动应用……\n")
+  shiny::runApp(app)
+} else {
+  cat("\n非交互模式：不启动服务器。交互运行请在 R 会话执行 shiny::runApp(app)。\n")
+}
+cat("== C6 完成 ==\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+非交互模式：不启动服务器。交互运行请在 R 会话执行 shiny::runApp(app)。
+== C6 完成 ==</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">interactive()</code>：区分"人在 R/RStudio 会话里"与"Rscript 批处理/CI 在跑"。批处理里若误启 Web 服务器，进程会永久挂住。</li>
+<li>这个守卫让同一份脚本两用：CI 里跑冒烟测试（构建 app、验证结构不报错），桌面上 <code class="inl">runApp(app)</code> 即刻变交互应用——工程化 Shiny 的标配写法。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>想先把表格"像 ODS RTF 一样静态导出验证"再搬进 Shiny。teal 的价值恰恰是<strong>过滤 → 重算 → 代码导出</strong>的闭环：用户在过滤面板做的每个切片，都能一键导出成可复现的 R 代码交给双编程 QC。把静态 TLF 塞进 shiny 的 table 输出，等于放弃了 teal_data 的代码链，退回"结果无法溯源"的老问题。</div>
+
+<h2 id="sC6-8">C6.8 解读要点</h2>
+<ul>
+<li><strong>一处推导、两处消费</strong>：common.R 的 ADaM 同时喂 C1 的静态 Table 1 和本案例的交互探索器——口径一致性的工程保证，对应 SAS 宏库复用。</li>
+<li><strong>teal_data = 数据 + 代码环境</strong>：装入表达式、<code class="inl">within()</code> 派生、过滤面板操作全部记录为可导出的 R 代码，探索过程可复现、可审计。</li>
+<li><strong>module 三件套</strong>：ui(id) / server(id, data) / datanames；datanames 决定模块拿到哪些数据集，是 teal 的数据访问控制。</li>
+<li><strong>reactive 心智</strong>：server 里的 <code class="inl">data</code> 是函数不是值，<code class="inl">data()</code> 取"当前"数据；写在 render* 内部即获得"过滤器一变自动重算"——这是从 SAS 批处理思维转向 Shiny 的关键一步。</li>
+<li><strong>非交互守卫</strong>：<code class="inl">if (interactive()) runApp</code> 让脚本同时服务 CI 冒烟测试与桌面交互运行；产物对象（teal_app）的内部结构不可依赖，审计信息要在组装前自留。</li>
+</ul>
+
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：在 teal 自定义模块的 server 里，为什么必须写 <code class="inl">data()[["ADSL"]]</code> 而不是 <code class="inl">data[["ADSL"]]</code>？</p>
+<button class="quiz-opt" data-opt="A">data 是列表名，加括号只是风格偏好，两种写法等价</button>
+<button class="quiz-opt" data-opt="B">data 是 reactive 函数：调用 data() 才取到过滤面板当前筛选后的最新数据，且放在 renderPlot 内可在过滤器变化时自动重算</button>
+<button class="quiz-opt" data-opt="C">data 对象在 server 里不存在，必须先用括号生成</button>
+<div class="quiz-exp">选 B。teal 传给模块 server 的第二个参数是一个 reactive（反应式函数），封装了"用户在左侧过滤面板筛选、模块在 teal_data 代码环境中重算之后"的数据快照。data() 每次调用返回当前值；把它写在 renderPlot/renderTable 内部，Shiny 的依赖追踪就会在过滤器变化时自动重新执行绘图代码。这正是 SAS 里"改 where 语句→重跑程序→看新输出"三步在 Shiny 里的自动化版本。teal_data 则是这一切的载体：数据 + 可复现代码环境。</div>
+</div>
+
+<h2 id="sC6-ex">C6.9 练习</h2>
+<ol>
+<li>（易）给 <code class="inl">example_module()</code> 换参数重跑：改 <code class="inl">label</code>、指定 <code class="inl">datanames = "ADAE"</code>，观察模块内容与数据入口的变化（参数清单见 <code class="inl">?teal.modules.general::example_module</code>）。</li>
+<li>（中）仿照"ADSL 年龄直方图"，新增一个"AE 按 SOC 条形图"模块：<code class="inl">datanames = "ADAE"</code>，server 里 <code class="inl">barplot(table(d$AEBODSYS))</code>（记得 <code class="inl">las = 2</code> 或 <code class="inl">horiz</code> 处理长标签），挂进 modules() 后 runApp 验证。</li>
+<li>（难）把应用部署到 <a href="https://www.shinyapps.io/">shinyapps.io</a>（rsconnect 包），并写一份部署核对清单：renv 锁定依赖版本 → 入口 app.R（source 推导 + runApp）→ 本地非交互冒烟通过 → shinyapps.io 账号与 token 配置 → <code class="inl">rsconnect::deployApp()</code> → 打开线上 URL 验证过滤器与模块 → 记录部署日志与包版本清单。</li>
+</ol>
+
+<h2 id="sC6-res">C6.10 扩展阅读</h2>
+<section class="res">
+<ul>
+<li><a href="https://pharmaverse.github.io/teal/">teal 官方文档</a> — teal_data、init、filter 面板与代码导出的完整指南，含多篇 articles <span class="tag">进阶</span></li>
+<li><a href="https://pharmaverse.github.io/teal.modules.clinical/">teal.modules.clinical</a> — 现成的临床 TLF 模块库（人口学表、AE 表、KM 曲线、森林图…），可直接挂进 init() <span class="tag">进阶</span></li>
+<li><a href="https://pharmaverse.github.io/">pharmaverse 生态门户</a> — admiral / teal / pharmaversesdtm 同源全家福，本书 C1 与第 7 章的底座 <span class="tag">参考</span></li>
+</ul>
+</section>
+<p class="lede">案例部分到此收官。回到<a href="../index.html#toc">全书目录</a>补齐章节知识，或读<a href="../ch8-community.html">第 8 章</a>看看这些技能在社区与职业市场上如何变现。</p>
+</article></main>
+<aside class="toc">
+<a href="#sC6-1">C6.1 背景与学习目标</a>
+<a href="#sC6-2">C6.2 数据源</a>
+<a href="#sC6-3">C6.3 环境：复用 common.R</a>
+<a href="#sC6-4">C6.4 步骤 1 构造 teal_data</a>
+<a href="#sC6-5">C6.5 步骤 2 组装应用</a>
+<a href="#sC6-6">C6.6 步骤 3 模块清单</a>
+<a href="#sC6-7">C6.7 交互运行守卫</a>
+<a href="#sC6-8">C6.8 解读要点</a>
+<a href="#sC6-ex">C6.9 练习</a>
+<a href="#sC6-res">C6.10 扩展阅读</a>
+</aside>
+</div>
+<script src="../assets/site.js"></script></body></html>

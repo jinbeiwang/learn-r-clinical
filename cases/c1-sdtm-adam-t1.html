@@ -1,0 +1,239 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>案例 C1 SDTM→ADaM→Table 1 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="../assets/site.css"><link rel="icon" href="../assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="../index.html"><img src="../assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="../index.html#toc">全书目录</a><a href="../ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="../index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="../ch0-environment.html">0 起步与环境</a>
+<a href="../ch1-r-basics.html">1 R 语言基础</a>
+<a href="../ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="../ch3-stats.html">3 统计分析</a>
+<a href="../ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="../ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="../ch6-pkgdev.html">6 R 包开发</a>
+<a href="../ch7-shiny.html">7 Shiny 与交互</a>
+<a href="../ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a class="on" href="c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="c2-survival.html">C2 生存分析</a>
+<a href="c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="c4-nhanes.html">C4 NHANES 加权</a>
+<a href="c5-trials-landscape.html">C5 试验景观</a>
+<a href="c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="../index.html">全书目录</a> / 实战案例</div>
+<div class="chapnum">C1</div>
+<h1>SDTM → ADaM → Table 1 全链路</h1>
+<p class="lede">把第 2 章的 CDISC 语义和第 4 章的 rtables 串成一条完整生产链：合成 SDTM 进、可递交 Table 1 出、双编程比对收尾。这是 SAS Programmer 最熟悉的工作流，我们用 R 原样重走一遍。</p>
+
+<h2 id="sc1-0">背景与学习目标</h2>
+<p>SDTM→ADaM→TLF 是临床编程的主干道。本案例用 pharmaverse 生态（pharmaversesdtm 供数、admiral 推导、rtables 出表、diffdf 比对）走完一个最小但完整的生产闭环，脚本为 <code class="inl">cases/c1_sdtm_adam_t1.R</code>，仓库根目录下 <code class="inl">Rscript cases/c1_sdtm_adam_t1.R</code> 即可复现。学完你应当能够：</p>
+<ul>
+<li><strong>目标 1</strong>：用 admiral 从 SDTM 的 dm/ae 推导 ADSL 与 ADAE，理解 ITTFL、AOCC01FL 这类受试者级/记录级标志变量的推导逻辑与 SAS 等价写法。</li>
+<li><strong>目标 2</strong>：用 rtables 产出按 ARM 分层、SEX 分行、AGE 出 n 与 Mean (SD) 的递交级 Table 1，并体会它与 PROC TABULATE + ODS RTF 的异同。</li>
+<li><strong>目标 3</strong>：用 diffdf 完成双编程比对，把 PROC COMPARE 的 QC 纪律原封不动平移到 R。</li>
+</ul>
+<div class="note"><strong>数据源：</strong>pharmaversesdtm 合成 SDTM 数据（xanomeline 模拟研究，dm 306 行 × 28 列、ae 1191 行）· 获取方式：<code class="inl">install.packages("pharmaversesdtm")</code>，数据为 CRAN 包内置，加载即用、无需联网 · 许可：随包分发，以包内 DESCRIPTION/LICENSE 声明为准（开源许可，可自由用于教学与验证演练）。</div>
+
+<h2 id="sc1-1">步骤 1：SDTM 源数据与环境装配</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r"># C1：SDTM → ADaM → Table 1 全链路（pharmaversesdtm + admiral + rtables + diffdf）
+# 运行：Rscript cases/c1_sdtm_adam_t1.R
+source(file.path(if (grepl("cases$", getwd())) ".." else ".", "cases", "common.R"))
+suppressPackageStartupMessages({ library(rtables); library(diffdf) })
+
+cat("== 步骤 1：SDTM 源数据 ==\n")
+cat("dm:", nrow(pharmaversesdtm::dm), "行 /", ncol(pharmaversesdtm::dm), "列；ae:",
+    nrow(pharmaversesdtm::ae), "行\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 1：SDTM 源数据 ==
+dm: 306 行 / 28 列；ae: 1191 行</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">source("cases/common.R")</code>：装载共享推导函数，等价于 SAS 的 <code class="inl">%include "macros.sas"</code> 或 autoexec 里挂标准宏库。<code class="inl">grepl("cases$", getwd())</code> 让脚本在仓库根目录或 cases/ 目录下都能跑——路径自适应是 R 脚本的小工程习惯。</li>
+<li><code class="inl">pharmaversesdtm::dm</code>：<code class="inl">::</code> 直接从包里取数据集，不需要先"libname + set"；类比 SAS 里 <code class="inl">sashelp.class</code> 这种即取即用。</li>
+<li><code class="inl">nrow() / ncol()</code>：先数行数再干活，对应你在 SAS log 里确认 <code class="inl">NOTE: There were 306 observations read</code> 的习惯。</li>
+</ol></div>
+
+<h2 id="sc1-2">步骤 2：admiral 推导 ADSL</h2>
+<p>推导逻辑封装在 <code class="inl">cases/common.R</code> 里。admiral 的 <code class="inl">derive_*</code> 函数族就是 R 世界的"经验证标准宏库"——每个函数带文档、带单元测试，替代你司那些口口相传的 SAS 宏：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">derive_adsl &lt;- function() {
+  dm &lt;- pharmaversesdtm::dm
+  dm %&gt;%
+    derive_vars_dt(new_vars_prefix = "BRTH", dtc = BRTHDTC) %&gt;%
+    derive_vars_dt(new_vars_prefix = "TRTS", dtc = RFSTDTC) %&gt;%
+    derive_vars_dt(new_vars_prefix = "TRTE", dtc = RFENDTC) %&gt;%
+    derive_vars_duration(
+      new_var = AGE, new_var_unit = AGEU,
+      start_date = BRTHDT, end_date = TRTSDT,
+      out_unit = "years", trunc_out = TRUE
+    ) %&gt;%
+    derive_vars_dy(reference_date = TRTSDT, source_vars = exprs(TRTSDT, TRTEDT)) %&gt;%
+    mutate(
+      ITTFL = if_else(!is.na(TRTSDT), "Y", "N"),
+      SEX = as.character(SEX), ARM = as.character(ARM), RACE = as.character(RACE)
+    ) %&gt;%
+    select(USUBJID, ARM, ARMCD, ACTARM, SEX, AGE, AGEU, RACE,
+           TRTSDT, TRTEDT, TRTSDY, TRTEDY, DTHFL, ITTFL)
+}</code></pre>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 2：admiral 推导 ADSL ==\n")
+adsl &lt;- derive_adsl()
+print(adsl %&gt;% count(ARM, ITTFL))
+cat("ADSL 维度:", dim(adsl), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 2：admiral 推导 ADSL ==
+# A tibble: 4 x 3
+  ARM                  ITTFL     n
+  &lt;chr&gt;                &lt;chr&gt; &lt;int&gt;
+1 Placebo              Y        86
+2 Screen Failure       N        52
+3 Xanomeline High Dose Y        84
+4 Xanomeline Low Dose  Y        84
+ADSL 维度: 306 14 </pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">derive_vars_dt()</code>：把 ISO 8601 字符日期（BRTHDTC/RFSTDTC/RFENDTC）解析成数值日期，等价于 <code class="inl">BRTHDT = input(BRTHDTC, yymmdd10.)</code>；部分缺失日期（如只有年月）的 imputation 规则也由参数控制。</li>
+<li><code class="inl">derive_vars_duration(trunc_out = TRUE)</code>：由 BRTHDT/TRTSDT 算 AGE 并向下取整——就是 <code class="inl">AGE = int((TRTSDT - BRTHDT) / 365.25)</code> 的验证版。</li>
+<li><code class="inl">ITTFL = if_else(!is.na(TRTSDT), "Y", "N")</code>：治疗开始日期非缺失即入 ITT 分析集，对应 SAS 的 <code class="inl">if TRTSDT ne . then ITTFL = 'Y'; else ITTFL = 'N';</code>。52 例 Screen Failure 全部 ITTFL='N'。</li>
+<li><code class="inl">count(ARM, ITTFL)</code>：一条管道顶 <code class="inl">PROC FREQ tables ARM*ITTFL</code>；86+84+84=254 就是后面 Table 1 的分母。</li>
+<li><code class="inl">select(...)</code>：ADSL 只保留 spec 定义的 14 列——分析数据集"按需裁剪"，与 SAS 里 keep= 一个道理。</li>
+</ol></div>
+
+<h2 id="sc1-3">步骤 3：推导 ADAE 与首例发生标志</h2>
+<p>ADAE 是记录级数据集（一行一条 AE），核心衍生是 <code class="inl">AOCC01FL</code>（每受试者首次 AE 发生标志），推导函数同样在 <code class="inl">common.R</code>：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">derive_adae &lt;- function() {
+  pharmaversesdtm::ae %&gt;%
+    derive_vars_dt(new_vars_prefix = "AST", dtc = AESTDTC) %&gt;%
+    derive_vars_dt(new_vars_prefix = "AEN", dtc = AEENDTC) %&gt;%
+    derive_var_extreme_flag(
+      by_vars = exprs(USUBJID), new_var = AOCC01FL,
+      order = exprs(ASTDT), mode = "first"
+    ) %&gt;%
+    mutate(AEBODSYS = as.character(AEBODSYS)) %&gt;%
+    select(USUBJID, AEBODSYS, AEDECOD, ASTDT, AENDT, AOCC01FL)
+}</code></pre>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 3：admiral 推导 ADAE（含 AOCC01FL 首次发生标志）==\n")
+adae &lt;- derive_adae()
+cat("AOCC01FL='Y' 行数:", sum(adae$AOCC01FL == "Y", na.rm = TRUE),
+    "（应等于受试者数", n_distinct(adae$USUBJID), "中有 AE 者）\n")
+print(adae %&gt;% count(AEBODSYS) %&gt;% slice_max(n, n = 5))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 3：admiral 推导 ADAE（含 AOCC01FL 首次发生标志）==
+AOCC01FL='Y' 行数: 225 （应等于受试者数 225 中有 AE 者）
+# A tibble: 5 x 2
+  AEBODSYS                                                 n
+  &lt;chr&gt;                                                &lt;int&gt;
+1 GENERAL DISORDERS AND ADMINISTRATION SITE CONDITIONS   292
+2 SKIN AND SUBCUTANEOUS TISSUE DISORDERS                 276
+3 NERVOUS SYSTEM DISORDERS                               101
+4 CARDIAC DISORDERS                                       91
+5 GASTROINTESTINAL DISORDERS                              87</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">derive_var_extreme_flag(by_vars = USUBJID, order = ASTDT, mode = "first")</code>：按受试者分组、按 AE 开始日期排序，给每人最早的一条 AE 打 'Y'。SAS 等价写法你闭着眼都会：<code class="inl">sort; by USUBJID ASTDT; if first.ASTDT then AOCC01FL='Y';</code>——admiral 把这套 by 组心智包成了带验证的函数。</li>
+<li>自检句写得好：<code class="inl">sum(AOCC01FL=="Y")</code> 应等于 <code class="inl">n_distinct(USUBJID)</code>（225 = 225）。把"预期关系"直接写进日志，就是 SAS 里 <code class="inl">%put</code> 断言的习惯。</li>
+<li><code class="inl">count(AEBODSYS) %&gt;% slice_max(n, n = 5)</code>：SOC 频数 Top5，等价于 PROC FREQ 后接排序取前 5；皮肤与给药部位反应 276 条，符合胆碱能药物的药理预期。</li>
+</ol></div>
+
+<h2 id="sc1-4">步骤 4：rtables 出 Table 1</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 4：rtables 出 Table 1（按 ARM 分层）==\n")
+adsl_it &lt;- adsl %&gt;% filter(ITTFL == "Y")
+tbl &lt;- basic_table() %&gt;%
+  split_cols_by("ARM") %&gt;%
+  split_rows_by("SEX", split_fun = drop_split_levels) %&gt;%
+  analyze("AGE", afun = function(x) {
+    in_rows(
+      "n" = length(x),
+      "Mean (SD)" = c(mean(x), sd(x)),
+      .formats = c("n" = "xx", "Mean (SD)" = "xx.x (xx.xx)")
+    )
+  }) %&gt;%
+  build_table(adsl_it)
+print(tbl)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 4：rtables 出 Table 1（按 ARM 分层）==
+                Placebo     Xanomeline High Dose   Xanomeline Low Dose
+----------------------------------------------------------------------
+F                                                                     
+  n               53                 40                    50         
+  Mean (SD)   76.4 (8.73)       74.7 (7.67)            75.7 (8.09)    
+M                                                                     
+  n               33                 44                    34         
+  Mean (SD)   73.4 (8.15)       74.1 (8.16)            75.6 (8.69)    </pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">filter(ITTFL == "Y")</code>：Table 1 只统计 ITT 人群，52 例筛败被排除——分析集过滤先行，spec 优先，SAS 里就是 <code class="inl">where ITTFL='Y'</code>。</li>
+<li><code class="inl">split_cols_by("ARM")</code>：列方向按治疗组展开，对应 PROC TABULATE 的 <code class="inl">across</code> 维度；Screen Failure 组因 ITTFL='N' 自然不出现。</li>
+<li><code class="inl">split_rows_by("SEX", split_fun = drop_split_levels)</code>：行方向按性别分层，并丢弃空水平——类比 CLASS 变量配合 <code class="inl">MISSING=''</code> 的清理工作。</li>
+<li><code class="inl">analyze("AGE", afun = ...)</code>：自定义分析函数，<code class="inl">in_rows()</code> 一次返回 "n" 与 "Mean (SD)" 两行，<code class="inl">.formats</code> 直接用 shell 里的格式串（"xx.x (xx.xx)"）——表格规格与代码一一对应，审 spec 的人一眼看懂。</li>
+<li><code class="inl">print(tbl)</code>：rtables 的表对象是结构化的（行树 × 列树），不是文本流；控制台打印只是预览，同一对象可导出 RTF/PDF、可被 testthat 断言单元格数值。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>用 PROC TABULATE 的思路找"语句"——rtables 没有 <code class="inl">table</code> 语句，它是<em>声明式管道</em>：先描述表结构（split），再挂统计函数（analyze），最后 build。心智从"过程调用"换成"搭表骨架"，复杂 shell（多级表头、嵌套行）反而比 SAS 好写。</div>
+
+<h2 id="sc1-5">步骤 5：diffdf 双编程自检</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 5：双编程自检（diffdf）==\n")
+adsl_re &lt;- derive_adsl()
+res &lt;- diffdf(adsl, adsl_re, keys = "USUBJID")
+cat("diffdf 发现问题:", diffdf_has_issues(res), "\n")
+cat("== C1 完成 ==\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 5：双编程自检（diffdf）==
+diffdf 发现问题: FALSE 
+== C1 完成 ==</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>教学脚本里 <code class="inl">adsl_re</code> 是同函数重跑（演示接口）；真实项目中它应来自第二位程序员<em>独立编写</em>的实现——双编程的价值在"独立"，不在"重跑"。</li>
+<li><code class="inl">diffdf(target, compare, keys = "USUBJID")</code>：就是 <code class="inl">PROC COMPARE BASE=adsl COMPARE=adsl_re ID USUBJID</code>——按键对齐、逐变量逐行比对，属性（类型/长度）差异也会报。</li>
+<li><code class="inl">diffdf_has_issues(res)</code> 返回 FALSE 即"零差异"放行；有差异时 <code class="inl">res</code> 按变量分块列出目标值/比对值/行键，比 PROC COMPARE 的 OUT= 数据集可读得多，可直接写入 QC 报告。</li>
+</ol></div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：C1 实跑输出中 AOCC01FL='Y' 共 225 行，这个数字的正确解读是？</p>
+<button class="quiz-opt" data-opt="A">AE 数据集共有 225 条记录</button>
+<button class="quiz-opt" data-opt="B">225 位至少报告过一次 AE 的受试者，每人的首次 AE 各被标记一行</button>
+<button class="quiz-opt" data-opt="C">225 位受试者未发生任何 AE</button>
+<div class="quiz-exp">选 B。derive_var_extreme_flag 按 USUBJID 分组、按 ASTDT 排序取 mode="first"，每位有 AE 的受试者只标一行，故 'Y' 行数 = n_distinct(USUBJID) = 225；ae 全量其实是 1191 行。SAS 等价写法是排序后 <code class="inl">by USUBJID ASTDT; if first.ASTDT then AOCC01FL='Y';</code>。AOCC01FL 常用于"每受试者首次事件"口径的汇总，避免同一人被重复计数。</div>
+</div>
+
+<h2 id="sc1-6">解读要点</h2>
+<ul>
+<li><strong>admiral = R 世界的标准宏库</strong>：derive_* 函数带文档、带测试、版本受控，比"祖传 SAS 宏"更经得起审计——这正是第 5 章包验证工作流的入口。</li>
+<li><strong>分母纪律</strong>：Table 1 的 254（而非 306）来自 ITTFL='Y' 过滤；筛败人群的去留规则在 SAS 与 R 中完全一致，一切以 spec 为准。</li>
+<li><strong>双编程心智零平移</strong>：diffdf(keys=USUBJID) 即 PROC COMPARE ID USUBJID；差异必须清零并留档，R 只是换了工具，纪律没变。</li>
+<li><strong>表对象结构化</strong>：rtables 产出的是可编程对象，能导出 RTF/PDF、能被单测断言单元格值——这是 ODS 文本流做不到的。</li>
+</ul>
+
+<h2 id="sc1-7">练习</h2>
+<ol>
+<li>（易）给 ADSL 加一个衍生字段 RACEGRP：把 RACE 合并为 "WHITE"/"ASIAN OR PACIFIC ISLANDER"/"其他" 三组（提示：<code class="inl">mutate + case_when</code>），然后 <code class="inl">count(RACEGRP)</code> 验证三组频数合计等于 306。</li>
+<li>（中）用 adae 与 rtables 加一张按 SOC 的 AE 频数表（经典 Table 14.1 风格）：行 = AEBODSYS（按总频数降序）、列 = ARM、单元格输出发生该 SOC 下任意 AE 的受试者数 n (%)——分母用各 ARM 的 ITT 人数，注意先去重到受试者级。</li>
+<li>（难）写双编程比对脚本：不看 common.R，用 base R 或自己的 dplyr 写法独立实现第二份 ADSL 推导，用 <code class="inl">diffdf(keys="USUBJID")</code> 比对两份结果并把差异报告写入 outputs/（有差异时需列出变量名与行键清单，格式自拟）。</li>
+</ol>
+
+<h2 id="sc1-8">扩展阅读</h2>
+<section class="res">
+<ul>
+<li><a href="https://github.com/pharmaverse/scda">scda（pharmaverse 合成试点研究数据，GitHub）</a> — 更完整的合成 SDTM/ADaM 试点数据集，适合练全链路 <span class="tag">数据</span></li>
+<li><a href="https://pharmaverse.github.io/examples/">pharmaverse examples</a> — admiral + rtables 的端到端示例工作流（ADSL/ADAE/ADTTE 到各类 TLF） <span class="tag">实战</span></li>
+</ul>
+</section>
+<p class="lede">下一案例：从 CDISC 主干道拐进统计分析——用 survival 包复刻 PROC LIFETEST 与 PROC PHREG 的经典组合。</p>
+</article></main>
+<aside class="toc">
+<a href="#sc1-0">背景与学习目标</a>
+<a href="#sc1-1">步骤 1 SDTM 源数据</a>
+<a href="#sc1-2">步骤 2 推导 ADSL</a>
+<a href="#sc1-3">步骤 3 推导 ADAE</a>
+<a href="#sc1-4">步骤 4 rtables Table 1</a>
+<a href="#sc1-5">步骤 5 diffdf 自检</a>
+<a href="#sc1-6">解读要点</a>
+<a href="#sc1-7">练习</a>
+<a href="#sc1-8">扩展阅读</a>
+</aside>
+</div>
+<script src="../assets/site.js"></script></body></html>

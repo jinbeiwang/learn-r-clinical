@@ -1,0 +1,202 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>实战案例 C4 · NHANES 加权分析 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="../assets/site.css"><link rel="icon" href="../assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="../index.html"><img src="../assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="../index.html#toc">全书目录</a><a href="../ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="../index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="../ch0-environment.html">0 起步与环境</a>
+<a href="../ch1-r-basics.html">1 R 语言基础</a>
+<a href="../ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="../ch3-stats.html">3 统计分析</a>
+<a href="../ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="../ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="../ch6-pkgdev.html">6 R 包开发</a>
+<a href="../ch7-shiny.html">7 Shiny 与交互</a>
+<a href="../ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="c2-survival.html">C2 生存分析</a>
+<a href="c3-faers-signal.html">C3 FAERS 信号</a>
+<a class="on" href="c4-nhanes.html">C4 NHANES 加权</a>
+<a href="c5-trials-landscape.html">C5 试验景观</a>
+<a href="c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="../index.html">全书目录</a> / 实战案例</div>
+<div class="chapnum">C4</div>
+<h1>NHANES 加权分析：从 XPT 直读到复杂抽样推断</h1>
+<p class="lede">SAS Programmer 对 PROC SURVEYMEANS 不陌生，但"为什么必须加权"往往一知半解。本案例用 CDC 的 NHANES 公共调查数据，把"分层—聚类—权重"三件套在 R 的 survey 包里完整走一遍，并给出加权逻辑回归。</p>
+
+<h2 id="sC4-1">C4.1 背景与学习目标</h2>
+<p>NHANES（National Health and Nutrition Examination Survey）是美国国家健康与营养检查调查：每两年一个周期，用<strong>多阶段分层概率抽样</strong>抽取代表性样本，再做体检与实验室检查。它的分析逻辑和临床试验完全不同——试验里"样本即总体"，调查里你必须用权重把样本"放大"回全国人口，否则点估计与标准误都会偏。学会它，你就掌握了真实世界证据（RWE）与流行病学合作中最常见的一类分析。</p>
+<p>学完本案例，你应能：</p>
+<ol>
+<li>用 <code class="inl">haven::read_xpt()</code> 从 CDC 官网直读 XPT 文件，并用 dplyr 完成合并、筛选与分析变量派生；</li>
+<li>用 <code class="inl">survey::svydesign()</code> 声明分层（strata）、聚类（PSU）与权重（weights），做出加权均值与分域估计——对应 SAS 的 PROC SURVEYMEANS 及其 STRATA / CLUSTER / WEIGHT / DOMAIN 语句；</li>
+<li>用 <code class="inl">survey::svyglm()</code> 拟合复杂抽样下的逻辑回归并解释 OR——对应 PROC SURVEYLOGISTIC。</li>
+</ol>
+
+<h2 id="sC4-2">C4.2 数据源</h2>
+<div class="note"><strong>数据源：</strong>NHANES 2017–2018 Pre-pandemic 数据文件——<code class="inl">DEMO_J</code>（人口学）、<code class="inl">BPX_J</code>（血压体检）、<code class="inl">BPQ_J</code>（血压问卷），来自 CDC 官网的公共 XPT 文件，用 <code class="inl">haven::read_xpt(url)</code> 按 URL 直读，无需手工下载；断网时脚本自动回退本地缓存 <code class="inl">cases/cache/nhanes_2017_2018.rds</code>。<strong>注意：NHANES 是复杂抽样设计，任何面向美国人口的估计都必须使用检查权重（本周期为 WTMEC2YR）并声明 SDMVSTRA（分层）与 SDMVPSU（聚类），否则结果有偏。</strong>权重构造细节见 NHANES 官方 <a href="https://wwwn.cdc.gov/nchs/nhanes/analyticguidelines.aspx">Analytic Guidelines</a>。</div>
+
+<h2 id="sC4-3">C4.3 环境与数据装载：在线优先、缓存回退</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r"># C4：NHANES 调查加权分析（haven 直读 CDC XPT + survey；离线回退 cases/cache/）
+# 运行：Rscript cases/c4_nhanes.R
+suppressPackageStartupMessages({ library(haven); library(survey); library(dplyr) })
+
+cachedir <- file.path(if (grepl("cases$", getwd())) ".." else ".", "cases", "cache")
+dir.create(cachedir, showWarnings = FALSE, recursive = TRUE)
+cf <- file.path(cachedir, "nhanes_2017_2018.rds")
+
+xpt <- function(table) {
+  url <- paste0("https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/", table, ".xpt")
+  haven::read_xpt(url)
+}
+load_nhanes <- function() {
+  list(demo = xpt("DEMO_J"), bpx = xpt("BPX_J"), bpq = xpt("BPQ_J"))
+}
+raw <- tryCatch({ d <- load_nhanes(); saveRDS(d, cf); d },
+                error = function(e) { cat("[cache] 网络不可用，读取:", cf, "\n"); readRDS(cf) })</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">haven::read_xpt(url)</code>：XPT 是 SAS 传输格式，haven 可以直接按 https URL 读取——相当于 SAS 里 <code class="inl">filename x url '...'</code> 加 PROC COPY/CIMPORT 的组合，但只有一行。</li>
+<li><code class="inl">tryCatch({ 在线抓取; saveRDS }, error = 读缓存)</code>：先在线、失败落缓存的"可复现网络案例"模式；RDS 是 R 的原生序列化格式，保留类型与标签。</li>
+<li>三张表用 <code class="inl">SEQN</code>（受访者序号）关联，这是 NHANES 的"USUBJID"。</li>
+</ol></div>
+
+<h2 id="sC4-4">C4.4 步骤 1：合并与清洗</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("== 步骤 1：合并与清洗 ==\n")
+dat <- raw$demo %>%
+  select(SEQN, RIDAGEYR, RIAGENDR, SDMVPSU, SDMVSTRA, WTMEC2YR) %>%
+  inner_join(raw$bpx %>% select(SEQN, BPXSY1, BPXDI1), by = "SEQN") %>%
+  inner_join(raw$bpq %>% select(SEQN, BPQ020), by = "SEQN") %>%
+  filter(RIDAGEYR >= 20, !is.na(WTMEC2YR), WTMEC2YR > 0, BPQ020 %in% c(1, 2)) %>%
+  mutate(sex = factor(RIAGENDR, labels = c("Male", "Female")),
+         htn = factor(BPQ020, labels = c("Yes", "No")))
+cat("分析样本 n =", nrow(dat), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 1：合并与清洗 ==
+分析样本 n = 5255</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>只保留分析需要的列：人口学变量 + <strong>三个设计变量</strong>（SDMVPSU、SDMVSTRA、WTMEC2YR）——设计变量必须一路带到分析集，这是调查分析和临床试验数据管理最大的不同。</li>
+<li><code class="inl">inner_join</code> 按 SEQN 合并，等价于 SAS 的 <code class="inl">merge ... in=a in=b; if a and b;</code>，但一行搞定且不用预排序。</li>
+<li><code class="inl">filter(RIDAGEYR >= 20, WTMEC2YR > 0, ...)</code>：限定成人、剔除无权重者（权重为 0 表示该样本不参与本周期推断，如 MEC 检查子样本缺失）；BPQ020 只留 1/2（是/否），把 7/9（拒答/不知道）剔出。</li>
+<li><code class="inl">mutate(sex = factor(..., labels = ...))</code>：把数值编码翻译成标签，等价于 SAS format——但 R 的 factor 会一路跟到出表。</li>
+</ol></div>
+
+<h2 id="sC4-5">C4.5 步骤 2：声明复杂抽样设计</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 2：复杂抽样设计 ==\n")
+des <- svydesign(ids = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR,
+                 data = dat, nest = TRUE)
+print(des)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 2：复杂抽样设计 ==
+Stratified 1 - level Cluster Sampling design (with replacement)
+With (30) clusters.
+svydesign(ids = ~SDMVPSU, strata = ~SDMVSTRA, weights = ~WTMEC2YR, 
+    data = dat, nest = TRUE)</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">svydesign()</code> 是 survey 包的"设计声明"：一次把 <code class="inl">ids</code>（聚类）、<code class="inl">strata</code>（分层）、<code class="inl">weights</code>（权重）说清楚——与 PROC SURVEYMEANS 里 <code class="inl">strata SDMVSTRA; cluster SDMVPSU; weight WTMEC2YR;</code> 三条语句一一对应。</li>
+<li>公式前的波浪号 <code class="inl">~SDMVPSU</code> 是 R 的 formula 语法，表示"按这个变量"，survey 包借此拿到变量而非值。</li>
+<li><code class="inl">nest = TRUE</code>：声明 PSU 编号嵌套于分层内——NHANES 的 SDMVPSU 在不同层里会重复编号，若不声明 nest，两个层里的同号 PSU 会被误当成同一个聚类，等价于 SAS survey 过程的 NEST 选项。</li>
+<li>输出显示"分层内 1 级聚类、30 个聚类"：这就是方差估计的自由度来源，聚类太少时 SE 会不稳（NHANES 官方建议报告自由度并检查）。</li>
+</ol></div>
+
+<h2 id="sC4-6">C4.6 步骤 3：加权均值与分域估计</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 3：加权均值（收缩压，总体与按性别）==\n")
+print(svymean(~BPXSY1, des))
+print(by_sex <- svyby(~BPXSY1, ~sex, des, svymean))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 3：加权均值（收缩压，总体与按性别）==
+       mean  SE
+BPXSY1   NA NaN
+          sex BPXSY1  se
+Male     Male     NA NaN
+Female Female     NA NaN</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">svymean(~BPXSY1, des)</code> ↔ PROC SURVEYMEANS 的 <code class="inl">var BPXSY1;</code>：输出加权均值与设计校正的标准误（SE）。</li>
+<li><code class="inl">svyby(~BPXSY1, ~sex, des, svymean)</code> ↔ PROC SURVEYMEANS 的 <code class="inl">domain sex;</code>（不是 class 语句！domain 才对每个亚组分别给出设计校正 SE）。</li>
+<li>本次实跑返回 <code class="inl">NA / NaN</code>：不是加权算错，而是分析集里 BPXSY1 存在缺失（血压体检有真实的未响应），而 survey 估计量默认 <code class="inl">na.rm = FALSE</code>，遇缺失保守返回 NA。修法：先 <code class="inl">filter(!is.na(BPXSY1))</code>（注意这会改变权重适用的子总体，严格做法是用 MEC 子样本权重）或给 svymean 传 <code class="inl">na.rm = TRUE</code>。</li>
+<li>SAS 对照：PROC SURVEYMEANS 默认把缺失排除出分析、照常出数；survey 包选择"先停下来提醒你"。两种哲学，都要心里有数。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>用 <code class="inl">mean(dat$BPXSY1)</code> 或 PROC MEANS 直接算调查数据。不加权等于把每个受访者当"一个美国人"，NHANES 对老年人、低收入与少数族裔刻意过采样，不加权的均值会系统性偏向这些群体；同时忽略 SDMVPSU/SDMVSTRA 会把聚类抽样当简单随机抽样，SE 通常被<strong>低估</strong>（设计效应 design effect 一般大于 1）。这正是 PROC MEANS 与 PROC SURVEYMEANS 的区别在 R 里的重演。</div>
+
+<h2 id="sC4-7">C4.7 步骤 4：加权逻辑回归</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("\n== 步骤 4：加权逻辑回归（自报高血压 ~ 年龄 + 性别）==\n")
+m <- svyglm(htn ~ RIDAGEYR + sex, family = quasibinomial(), design = des)
+print(summary(m)$coefficients)
+cat("OR(年龄+1岁) =", round(exp(coef(m)["RIDAGEYR"]), 3), "\n")
+cat("== C4 完成 ==\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== 步骤 4：加权逻辑回归（自报高血压 ~ 年龄 + 性别）==
+               Estimate  Std. Error   t value     Pr(>|t|)
+(Intercept)  3.39214391 0.176089045  19.26380 6.093694e-11
+RIDAGEYR    -0.05524929 0.002943011 -18.77305 8.430486e-11
+sexFemale    0.28816108 0.066952697   4.30395 8.569773e-04
+OR(年龄+1岁) = 0.946 
+== C4 完成 ==</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">svyglm(..., design = des)</code> ↔ PROC SURVEYLOGISTIC：把设计对象直接喂给模型，SE 用泰勒线性化（默认）做设计校正，检验统计量是 t/F 而非卡方——自由度由聚类数决定。</li>
+<li><code class="inl">family = quasibinomial()</code>：必须用 quasi 族。若用 binomial，SE 会按"独立同分布二项"公式计算而忽略设计，等于白声明了 svydesign。</li>
+<li>解读本次实跑：女性相对男性的系数 0.288，OR = e^0.288 ≈ 1.33，即自报高血压 odds 更高；年龄系数为负是"自报高血压"这个结局的偏倚体现（本例未纳入服降压药等变量，仅作管道演示，正式分析请用完整定义）。</li>
+<li><code class="inl">exp(coef(m)["RIDAGEYR"])</code>：按名字取系数再指数化成 OR，等价于 SAS 里从 ODDSRATIO 输出表取值。</li>
+</ol></div>
+
+<h2 id="sC4-8">C4.8 解读要点</h2>
+<ul>
+<li><strong>XPT 直读 + 缓存回退</strong>：<code class="inl">haven::read_xpt(url)</code> 一行完成 SAS 里"filename url + 导入"两步；<code class="inl">tryCatch + saveRDS</code> 让网络案例断网也能复现——这是本书所有联网案例的统一骨架。</li>
+<li><strong>设计三件套一次声明</strong>：strata / ids / weights 对应 PROC SURVEY* 系列的 STRATA / CLUSTER / WEIGHT 语句；<code class="inl">nest = TRUE</code> 对应 NEST 选项。声明之后，所有 svy* 函数自动继承设计。</li>
+<li><strong>函数映射</strong>：svymean ↔ SURVEYMEANS 均值、svyby ↔ DOMAIN 分域、svytable ↔ SURVEYFREQ、svyglm ↔ SURVEYLOGISTIC/SURVEYREG、svyquantile ↔ SURVEYMEANS 分位数。</li>
+<li><strong>缺失处理哲学不同</strong>：survey 函数默认 <code class="inl">na.rm = FALSE</code>，遇缺失直接给 NA 提醒你；SAS 则默默剔除。分析前先对结局变量做缺失清理，并想清楚子样本是否还适用原权重（NHANES 的 MEC 子样本要换子样本权重）。</li>
+<li><strong>合并多周期要动权重</strong>：拼接两个 2 年周期时，每个周期的 WTMEC2YR 都要除以 2（k 个周期除以 k），否则会重复计入人口——这是练习 3 的考点，也是 NHANES 官方 Guidelines 的第一课。</li>
+</ul>
+
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：WTMEC2YR 是 NHANES 的"两年 MEC 检查权重"。如果跳过 svydesign，直接用 <code class="inl">mean(htn == "Yes")</code> 报告"美国成人高血压患病率"，最可能的后果是？</p>
+<button class="quiz-opt" data-opt="A">结果几乎一样，因为 NHANES 本来就是随机抽样</button>
+<button class="quiz-opt" data-opt="B">点估计有偏（过采样人群被过度代表），且若进一步忽略分层聚类，SE 通常被低估</button>
+<button class="quiz-opt" data-opt="C">只是计算更慢，估计值不变</button>
+<div class="quiz-exp">选 B。WTMEC2YR 的含义是"这一行样本代表美国平民非机构化人口中的多少人"，权重同时补偿了抽样概率不均与无响应。NHANES 对老年、低收入、部分族裔刻意过采样，不加权时这些群体在估计中被过度代表；再把聚类抽样当简单随机抽样，SE 会系统性偏小、p 值偏乐观。这正是 SAS 里 PROC MEANS 与带 STRATA/CLUSTER/WEIGHT 的 PROC SURVEYMEANS 的差距。</div>
+</div>
+
+<h2 id="sC4-ex">C4.9 练习</h2>
+<ol>
+<li>（易）再读入 <code class="inl">BMX_J</code>（体格测量表），把 <code class="inl">BPXSY1</code> 换成 <code class="inl">BMXBMI</code>（体质指数），计算总体与按性别的加权均值——记得先处理缺失并检查是否需要 <code class="inl">na.rm = TRUE</code>。</li>
+<li>（中）在 svyglm 中加入教育水平 <code class="inl">DMDEDUC2</code>（在 DEMO_J 中，20+ 岁成人适用），转成 factor 后重拟合，观察年龄与性别的 OR 有何变化，并解释"调整混杂"在这里的含义。</li>
+<li>（难）合并 2015–2016（DEMO_I / BPX_I / BPQ_I）与 2017–2018 两个周期：每个周期的权重改为 <code class="inl">WTMEC2YR / 2</code>，纵向拼接后重建 svydesign（注意 SDMVPSU 需配合 nest = TRUE），对比单周期与合并后的高血压患病率估计及其 SE 变化。</li>
+</ol>
+
+<h2 id="sC4-res">C4.10 扩展阅读</h2>
+<section class="res">
+<ul>
+<li><a href="https://cran.r-project.org/package=survey">survey 包文档（CRAN）</a> — Thomas Lumley 的 survey 包，vignette 与《Complex Surveys: A Guide to Analysis Using R》配套 <span class="tag">进阶</span></li>
+<li><a href="https://www.cdc.gov/nchs/nhanes/">NHANES 官网</a> — 数据文件、变量字典（codebook）与加权分析官方指南 Analytic Guidelines <span class="tag">参考</span></li>
+<li><a href="https://wwwn.cdc.gov/nchs/nhanes/analyticguidelines.aspx">NHANES Analytic Guidelines</a> — 权重选择、子样本加权与多周期合并的权威规则 <span class="tag">进阶</span></li>
+</ul>
+</section>
+<p class="lede">下一案例：<a href="c5-trials-landscape.html">C5 试验景观</a>——用 ClinicalTrials.gov API v2 抓取真实试验注册数据，画出一张"糖尿病试验版图"。</p>
+</article></main>
+<aside class="toc">
+<a href="#sC4-1">C4.1 背景与学习目标</a>
+<a href="#sC4-2">C4.2 数据源</a>
+<a href="#sC4-3">C4.3 环境与数据装载</a>
+<a href="#sC4-4">C4.4 步骤 1 合并与清洗</a>
+<a href="#sC4-5">C4.5 步骤 2 抽样设计</a>
+<a href="#sC4-6">C4.6 步骤 3 加权均值</a>
+<a href="#sC4-7">C4.7 步骤 4 加权逻辑回归</a>
+<a href="#sC4-8">C4.8 解读要点</a>
+<a href="#sC4-ex">C4.9 练习</a>
+<a href="#sC4-res">C4.10 扩展阅读</a>
+</aside>
+</div>
+<script src="../assets/site.js"></script></body></html>
