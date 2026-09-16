@@ -1,0 +1,192 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 0 章 起步与环境 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a class="on" href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 0 章</div>
+<div class="chapnum">00</div>
+<h1>起步与环境</h1>
+<p class="lede">R 已经不是"能不能进制药"的问题，而是"你什么时候进场"的问题。本章把环境、心智与验证框架一次搭好。</p>
+
+<h2 id="s0-1">0.1 R 已经走进监管递交</h2>
+<p>先放下"R 只是探索工具"的旧印象。三条已发生的事实：</p>
+<ul>
+<li><strong>R Consortium Submissions Working Group</strong> 完成了 Pilot 1–5：用 R 包形式向 FDA 递交分析并通过审评复现（见 <a href="https://rconsortium.github.io/submissions-wg/pilot1.html">Pilot 1 记录</a> 与 <a href="https://www.appsilon.com/post/r-in-fda-submissions">五轮 Pilot 经验总结</a>）。</li>
+<li><strong>2025-08 FDA eCTD 技术一致性指南更新</strong>：新增接受 <code class="inl">.rds / .rdata / .rda / .md / .rd</code> 等格式，扩展 <code class="inl">.zip / .html</code>（可直接递交完整 R 包），见 <a href="https://r-consortium.com/posts/expanded-fda-ectd-file-format-support-for-r-packages/">R Consortium 公告</a>。</li>
+<li><strong>企业级成功案例</strong>：J&amp;J 以"SAS 做 ADaM + R 做 TFL"的混合策略完成 FDA 递交并获批，见 <a href="https://r-consortium.org/posts/johnson-and-johnsons-success-story-a-hybrid-r-sas-strategy-for-fda-submission/">案例复盘</a>；PharmaSUG 2026 最佳论文级工作 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">ET-279《Goodbye SAS, Hello R: Practical Workflows for CDISC》</a> 给出了 R 的 CDISC 全流程。</li>
+</ul>
+<div class="note">对你的含义：SAS 技能（CDISC 语义、SAP 理解、QC 纪律）在 R 世界里同样值钱，甚至更值钱——因为 R 生态缺的正是懂监管语境的人。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 1：2025-08 FDA eCTD 指南更新后，下列哪组文件形式被新增/扩展接受？</p>
+<button class="quiz-opt" data-opt="A">仅 .R 脚本纯文本</button>
+<button class="quiz-opt" data-opt="B">.rds / .rdata / .rda 以及 .zip / .html（完整 R 包）</button>
+<button class="quiz-opt" data-opt="C">仅 Quarto 渲染的 PDF</button>
+<div class="quiz-exp">选 B。此次更新让非公开 R 包可直接以 .zip 递交，.html 交互报告也在扩展之列；此前 Pilot 阶段需借助 pkglite 转纯文本束。</div>
+</div>
+
+<h2 id="s0-2">0.2 安装与验证：先让 R 听话</h2>
+<p>本书所有输出捕获自下面这套环境。若你机器上已有 R（例如 <code class="inl">C:\Program Files\R\R-4.5.0</code>），无需重装；只需确认版本 ≥ 4.3 并配置一个快的 CRAN 镜像。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 终端验证安装
+Rscript --version
+
+# R 会话内查看环境与已附包
+si <- sessionInfo()
+cat('R version:', R.version.string, '\n')
+cat('Platform:', R.version$platform, '\n')
+
+# 配置 CRAN 镜像（国内推荐清华源），写入 ~/.Rprofile 可持久化
+options(repos = c(CRAN = "https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，Windows）
+Rscript (R) version 4.5.0 (2025-04-11)
+
+R version: R version 4.5.0 (2025-04-11 ucrt)
+Platform: x86_64-w64-mingw32
+Attached base: stats, graphics, grDevices, utils, datasets, methods, base</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">Rscript --version</code>：命令行入口，等价于 SAS 的 <code class="inl">sas -version</code>；批处理跑脚本就靠它。</li>
+<li><code class="inl">sessionInfo()</code>：你的"PROC LOG 首页"——R 版本、平台、已加载包及版本，QC 与递交复现的第一证据。</li>
+<li><code class="inl">options(repos=...)</code>：换镜像源，类比 SAS 的 mirror 配置；清华源在国内下载二进制包快一个量级。</li>
+</ol></div>
+
+<h2 id="s0-3">0.3 用 renv 把项目锁起来</h2>
+<p>SAS 环境由公司统一维护；R 的包生态是去中心的，<strong>环境 reproducibility 是你自己的责任</strong>。renv 为每个项目建独立库并生成 <code class="inl">renv.lock</code> 锁文件——这就是递交材料里"Set-up R environment"附录的底稿。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 在项目目录初始化（bare = 先建空库，不扫描依赖）
+renv::init(bare = TRUE)
+
+# 记录当前依赖到 renv.lock
+renv::snapshot()
+
+# 换一台机器/同事复现：按锁文件装回完全相同的版本
+renv::restore(prompt = FALSE)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（节选）
+The following package(s) will be updated in the lockfile:
+
+# CRAN -----------------------------------------------------------------------
+- renv   [* -> 1.1.5]
+
+The version of R recorded in the lockfile will be updated:
+- R      [* -> 4.5.0]
+
+- Lockfile written to ".../renv.lock".
+--- restore ---
+- The library is already synchronized with the lockfile.</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">init(bare=TRUE)</code>：只建项目私库与骨架，不自动扫描装包——干净起步，依赖由你显式添加。</li>
+<li><code class="inl">snapshot()</code>：把"当前项目库用了哪些包、什么版本"写进 renv.lock；相当于冻结 PROC 版本清单。</li>
+<li><code class="inl">restore()</code>：读锁文件装回同版本；"already synchronized" 说明当前库已与锁文件一致。</li>
+</ol></div>
+<div class="quiz" data-answer="C">
+<p class="quiz-q">测验 2：renv 在监管语境下最核心的价值是什么？</p>
+<button class="quiz-opt" data-opt="A">让包下载更快</button>
+<button class="quiz-opt" data-opt="B">替代 Git 做代码版本控制</button>
+<button class="quiz-opt" data-opt="C">锁定包版本，保证分析环境可复现、可审计</button>
+<div class="quiz-exp">选 C。renv.lock 是环境复现的证据链一环（J&amp;J 案例的 ADRG 附录即以此为基础）；代码版本仍由 Git 管理，二者互补。</div>
+</div>
+
+<h2 id="s0-4">0.4 项目目录约定</h2>
+<pre class="out" style="white-space:pre">study_x/
+├── study_x.Rproj        # RStudio 项目文件（打开即切到项目库）
+├── renv.lock            # 环境锁
+├── spec/                # 映射与表格规格（sdtm_spec.xlsx, tfl_spec.xlsx）
+├── R/                   # 可复用函数（derive_*.R）
+├── programs/            # 主程序（sdtm_01_dm.R, adam_02_adsl.R, tfl_03_t1.R）
+├── data/                # 原始数据（只读！）
+├── outputs/             # ADaM / TLF 产物
+├── logs/                # 运行日志（message/logger 落盘）
+└── tests/               # testthat 单元与比对测试</code></pre>
+<div class="pitfall"><strong>SAS 误区：</strong>把 data/ 当 work 库随手写回。R 项目里原始数据必须只读；所有派生产物进 outputs/，否则 QC 与审计追踪无从谈起。</div>
+
+<h2 id="s0-5">0.5 SAS ↔ R 概念映射表</h2>
+<p>这张表是全书的"翻译词典"，遇到陌生 R 代码先回这里找锚点：</p>
+<table>
+<tr><th>SAS</th><th>R 对应</th><th>备注</th></tr>
+<tr><td>DATA step 行级处理</td><td><code class="inl">dplyr::mutate()</code> / <code class="inl">base transform</code></td><td>R 是列向量思维，避免逐行循环</td></tr>
+<tr><td>merge / PROC SQL join</td><td><code class="inl">dplyr::left_join()</code> 等</td><td>注意 NA 键不匹配（SAS 缺失键行为不同）</td></tr>
+<tr><td>retain + 条件赋值</td><td><code class="inl">mutate(x = accumulate(...))</code> 或 <code class="inl">cumsum()</code></td><td>purrr::accumulate 最贴近 retain 心智</td></tr>
+<tr><td>lag()</td><td><code class="inl">dplyr::lag()</code>（配合 <code class="inl">order_by()</code>）</td><td>R 的 lag 无队列陷阱，但需先排序</td></tr>
+<tr><td>PROC SORT</td><td><code class="inl">arrange()</code> / <code class="inl">base::order()</code></td><td>by 组内排序用 <code class="inl">arrange(grp, var)</code></td></tr>
+<tr><td>PROC MEANS class</td><td><code class="inl">summarise(.by = grp, ...)</code></td><td>.by 是 dplyr 1.1+ 的分组语法</td></tr>
+<tr><td>PROC FREQ tables</td><td><code class="inl">table()</code> / <code class="inl">gtsummary::tbl_summary()</code></td><td>出报告级频数表用 gtsummary</td></tr>
+<tr><td>PROC TRANSPOSE</td><td><code class="inl">tidyr::pivot_wider()/pivot_longer()</code></td><td>名字即意图，比 transpose 可读</td></tr>
+<tr><td>ODS RTF/PDF</td><td>Quarto + flextable / rtables 导出</td><td>见第 4 章</td></tr>
+<tr><td>macro + %put 日志</td><td><code class="inl">function()</code> + <code class="inl">logger::log_info()</code></td><td>函数有词法作用域，不再全局污染</td></tr>
+</table>
+
+<h2 id="s0-6">0.6 GxP / CSV 验证心智平移</h2>
+<p>验证对象变了，验证纪律没变：</p>
+<table>
+<tr><th>SAS 世界</th><th>R 世界</th></tr>
+<tr><td>验证安装好的 SAS + 标准宏库</td><td>验证 CRAN/内部包（valtools 工作流，见第 5 章）+ renv 锁环境</td></tr>
+<tr><td>双编程 + PROC COMPARE</td><td>双编程 + <code class="inl">diffdf::diffdf()</code> / <code class="inl">arsenal::compare()</code>（见第 2 章）</td></tr>
+<tr><td>日志审阅（ERROR/WARNING 计数）</td><td>message/warning 捕获 + testthat 断言 + CI 全绿</td></tr>
+<tr><td>程序头注释规范</td><td>roxygen 文档 + Git commit 规范 + spec 链接</td></tr>
+</table>
+<div class="note">PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">ET-140</a> 给出了 R 包验证框架的完整思路，是第 5 章 5.8 节的底稿；现在先记住结论：<em>在 R 世界，验证的最小单元是"包 + 测试 + 锁环境"，而不是单个脚本。</em></div>
+
+<h2 id="s0-7">0.7 本站用法与复现指南</h2>
+<ul>
+<li><strong>代码块</strong>：右上角"复制"按钮取原文；高亮为运行时完成，复制得到的是纯净源码。</li>
+<li><strong>输出块</strong>（虚线边框）：标注"实跑捕获"的为 R 4.5.0 真实输出；标注"示例输出(节选)"的为教学节选。</li>
+<li><strong>测验</strong>：点选项即判分并展开解析；章末不再另给答案。</li>
+<li><strong>案例复现</strong>：<code class="inl">Rscript cases/c1_sdtm_adam_t1.R</code> 即可重跑；网络案例首次运行会缓存到 <code class="inl">cases/cache/</code>，断网时可复现。</li>
+<li><strong>暗色/进度</strong>：右上 ◐ 切换主题；顶部细线为阅读进度。</li>
+</ul>
+
+<h2 id="s0-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://r4ds.hadley.nz">R for Data Science (2e)</a> — 全书主线教材，免费在线；ch1–ch4 对应本书第 1 章 <span class="tag">入门</span></li>
+<li><a href="https://posit.co/resources/cheatsheets/">Posit Cheatsheets</a> — dplyr/tidyr/ggplot2 速查，打印贴墙 <span class="tag">参考</span></li>
+<li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">PharmaSUG 2026 ET-279 Goodbye SAS, Hello R</a> — R 的 CDISC 全流程实战论文 <span class="tag">进阶</span></li>
+<li><a href="https://rinpharma.com">R/Pharma 会议</a> — 制药 R 社区年度会议与 Summit 圆桌笔记 <span class="tag">参考</span></li>
+<li>本地精读：<code class="inl">../PharmaR/Pharma开源社区近2年文章精读与AI影响分析.md</code> — 近 2 年生态主线与 AI 影响 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s0-ex">本章练习</h2>
+<ol>
+<li>（易）在本机跑通 0.2 全部命令，把 sessionInfo 输出存成 txt 留档。</li>
+<li>（中）建一个 renv 项目，装入 dplyr 后 snapshot，删除库目录再 restore，体会锁文件作用。</li>
+<li>（难）对照 0.5 映射表，挑你最近一个 SAS 程序，写出等价的 R 伪代码骨架（不必跑通）。</li>
+</ol>
+<p class="lede">下一章：把 SAS 用户的语言直觉逐条翻译成 R——向量、factor、NA 与三大编程范式。</p>
+</article></main>
+<aside class="toc">
+<a href="#s0-1">0.1 R 已进入监管递交</a>
+<a href="#s0-2">0.2 安装与验证</a>
+<a href="#s0-3">0.3 renv 项目化</a>
+<a href="#s0-4">0.4 目录约定</a>
+<a href="#s0-5">0.5 SAS↔R 映射表</a>
+<a href="#s0-6">0.6 GxP 验证心智</a>
+<a href="#s0-7">0.7 用法与复现</a>
+<a href="#s0-res">章末资源</a>
+<a href="#s0-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>
