@@ -83,7 +83,7 @@ learn_R/
 
 ## 6. 输出真实性策略
 
-1. winget 安装 R 4.x；配置 CRAN 镜像；安装案例所需包（tidyverse, admiral, pharmaversesdtm, synadam, rtables, tern, formatters, mmrm, lme4, survminer, flexsurv, gtsummary, tableone, flextable, officer, openxlsx, survey, nhanesA, ctrdata, httr2, jsonlite, shiny, DT, plotly, teal, testthat, usethis, roxygen2, renv, profvis, logger, diffdf, arsenal, metatools, gsDesign, forestploter, knitr, rmarkdown）。
+1. 复用本机已有 R 4.5.0（`C:/Program Files/R/R-4.5.0/bin/Rscript.exe`，不在 shell PATH 中，一律绝对路径调用）；不重装 R；配置 CRAN 镜像后仅补装缺失包（候选清单：tidyverse, admiral, pharmaversesdtm, synadam, rtables, tern, formatters, mmrm, lme4, survminer, flexsurv, gtsummary, tableone, flextable, officer, openxlsx, survey, nhanesA, ctrdata, httr2, jsonlite, shiny, DT, plotly, teal, testthat, usethis, roxygen2, renv, profvis, logger, diffdf, arsenal, metatools, gsDesign, forestploter, knitr, rmarkdown；先探测已有/缺失再装）。
 2. 案例 `.R` 实跑，输出落盘 `docs/run-outputs/*.txt`，截取嵌入页面（标注"实跑捕获"）。
 3. 章节内小示例输出逐行推演核验；无法实跑的（网络受限等）标注"示例输出(节选)"。
 4. 安装失败回退：全部输出改人工核验+标注，ch0 保留安装指南供用户自装。
