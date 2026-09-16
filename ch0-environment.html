@@ -66,7 +66,7 @@ Rscript (R) version 4.5.0 (2025-04-11)
 
 R version: R version 4.5.0 (2025-04-11 ucrt)
 Platform: x86_64-w64-mingw32
-Attached base: stats, graphics, grDevices, utils, datasets, methods, base</code></pre>
+Attached base: stats, graphics, grDevices, utils, datasets, methods, base</pre>
 <div class="walk"><strong>逐行解读：</strong>
 <ol>
 <li><code class="inl">Rscript --version</code>：命令行入口，等价于 SAS 的 <code class="inl">sas -version</code>；批处理跑脚本就靠它。</li>
@@ -95,7 +95,7 @@ The version of R recorded in the lockfile will be updated:
 
 - Lockfile written to ".../renv.lock".
 --- restore ---
-- The library is already synchronized with the lockfile.</code></pre>
+- The library is already synchronized with the lockfile.</pre>
 <div class="walk"><strong>逐行解读：</strong>
 <ol>
 <li><code class="inl">init(bare=TRUE)</code>：只建项目私库与骨架，不自动扫描装包——干净起步，依赖由你显式添加。</li>
@@ -120,7 +120,7 @@ The version of R recorded in the lockfile will be updated:
 ├── data/                # 原始数据（只读！）
 ├── outputs/             # ADaM / TLF 产物
 ├── logs/                # 运行日志（message/logger 落盘）
-└── tests/               # testthat 单元与比对测试</code></pre>
+└── tests/               # testthat 单元与比对测试</pre>
 <div class="pitfall"><strong>SAS 误区：</strong>把 data/ 当 work 库随手写回。R 项目里原始数据必须只读；所有派生产物进 outputs/，否则 QC 与审计追踪无从谈起。</div>
 
 <h2 id="s0-5">0.5 SAS ↔ R 概念映射表</h2>
