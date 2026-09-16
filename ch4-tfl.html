@@ -1,0 +1,349 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 4 章 临床报告：TLF 自动化 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a class="on" href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 4 章</div>
+<div class="chapnum">04</div>
+<h1>临床报告：TLF 自动化</h1>
+<p class="lede">TLF（Tables, Listings, Figures）是 SAS Programmer 的日常战场。这一章我们把同一条流水线搬到 R：从 spec 到程序、从表格对象到 Word/Excel/纯文本交付，再到 Quarto 参数化与追溯性——每一步都实跑给你看。</p>
+
+<h2 id="s4-1">4.1 TLF 流水线总览：spec → program → output → QC</h2>
+<p>先把心智地图画出来。无论用 SAS 还是 R，一张合规的 TLF 都走同一条流水线：</p>
+<ol>
+<li><strong>spec（规格）</strong>：tfl_spec.xlsx 定义表格编号、标题、脚注、人群、变量、统计量与格式。它对应 SAS 世界里的 Table Shell + SAP 章节，是一切编程的"需求基线"。</li>
+<li><strong>program（程序）</strong>：一个脚本产一张（或一族）表。R 里通常是 <code class="inl">programs/t14_1_1.R</code>，读 ADaM、调 rtables/tern 布局、写出产物。</li>
+<li><strong>output（产物）</strong>：表格对象 + 落盘文件（txt / docx / xlsx / pdf / html）。文件名、标题、页眉必须与 spec 编号一致。</li>
+<li><strong>QC（质控）</strong>：双编程比对（另一位 programmer 独立实现后 diff）、日志审阅、产物与 spec 的逐项核对。R 里用 <code class="inl">diffdf</code>/<code class="inl">waldo</code> 比对数据集、用 testthat 断言关键数字（见第 2、5 章）。</li>
+</ol>
+<p><strong>追溯要求</strong>：任何一张交付表格，都应能回答四个问题——用哪个版本的输入数据？哪个版本的代码（Git commit）？哪个版本的环境（renv.lock + sessionInfo）？谁在何时跑过、日志在哪？SAS 时代靠程序头注释 + SAS log + 受控目录；R 时代这四件套一样不能少，只是载体变了（见 4.8 清单）。</p>
+<table>
+<tr><th>SAS ODS 心智</th><th>R 对应</th><th>关键差异</th></tr>
+<tr><td>PROC TABULATE / REPORT + ODS RTF</td><td>rtables + tern 布局树，再导出</td><td>布局是<em>数据结构</em>（树），不是过程步选项；可保存、可测试、可复用</td></tr>
+<tr><td>ODS 目的地（RTF/PDF/EXCEL）</td><td>flextable→docx、openxlsx→xlsx、export_as_txt/pdf</td><td>表格对象与渲染格式解耦：一次建表，多处导出</td></tr>
+<tr><td>宏库出 Table 1</td><td>tableone / gtsummary 一行出表</td><td>探索与论文场景更省事，递交级仍需 rtables 家族</td></tr>
+<tr><td>ODS + 驱动脚本批量出报告</td><td>Quarto 参数化渲染</td><td>参数、代码、叙述、输出在一个 .qmd 里版本化</td></tr>
+</table>
+
+<h2 id="s4-2">4.2 rtables 基础：布局树实跑</h2>
+<p>rtables 是 pharmaverse 的表格引擎（罗氏递交同款）。它的核心思想对 SAS 老手既陌生又亲切：<strong>先声明一棵"布局树"，再灌数据</strong>。<code class="inl">basic_table()</code> 是空树根，<code class="inl">split_rows_by()</code> 加一层行分割（相当于 CLASS/BY 变量），<code class="inl">analyze()</code> 挂叶子（对变量做汇总）。<code class="inl">build_table()</code> 才把数据浇进去。</p>
+<p>数据说明：<code class="inl">pharmaversesdtm</code> 包附带的是 SDTM 演示数据（ADSL 在姊妹包 pharmaverseadam 中），本章取 <code class="inl">dm</code> 前 60 行当"迷你 ADSL"教学，字段名完全同构（USUBJID/ARM/SEX/AGE/RACE）。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(rtables); library(dplyr)
+
+# 取 pharmaversesdtm::dm 前 60 行当"迷你 ADSL"
+adsl_small &lt;- pharmaversesdtm::dm %&gt;%
+  slice_head(n = 60) %&gt;%
+  select(USUBJID, ARM, SEX, AGE, RACE) %&gt;%
+  mutate(ARM = factor(ARM), SEX = factor(SEX))
+
+tt &lt;- basic_table() %>%          # 空布局树（树根）
+  split_rows_by("ARM") %>%       # 第一层行分割：按 ARM 分组
+  analyze(c("SEX", "AGE"))       # 叶子：默认汇总（分类=频数，数值=均值）
+
+tbl &lt;- build_table(tt, df = adsl_small)   # 布局树 + 数据 -&gt; 表格对象
+print(tbl)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，节选前三组）
+                       all obs
+------------------------------
+Placebo
+  SEX
+    F                     9
+    M                     9
+  AGE
+    Mean                74.72
+Screen Failure
+  SEX
+    F                     7
+    M                     3
+  AGE
+    Mean                67.20
+Xanomeline High Dose
+  SEX
+    F                     6
+    M                     9
+  AGE
+    Mean                66.73
+# ……Xanomeline Low Dose 组结构相同（F 7 / M 10 / Mean 74.12），此处省略</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">slice_head(n = 60)</code>：取前 60 行，等价于 SAS 的 <code class="inl">if _n_ &lt;= 60</code>；<code class="inl">mutate(ARM = factor(ARM))</code> 把分组变量转 factor——rtables/tern 对 factor 的层级顺序最友好。</li>
+<li><code class="inl">basic_table() %&gt;% split_rows_by("ARM")</code>：只是在<em>描述</em>表结构（"行方向按 ARM 切开"），此时没有任何数据参与。这对应 PROC TABULATE 的 <code class="inl">class ARM;</code>，但它是可传递的 R 对象。</li>
+<li><code class="inl">analyze(c("SEX","AGE"))</code>：在每个 ARM 分组内对 SEX、AGE 挂汇总叶子。不指定 <code class="inl">afun</code> 时用默认：factor 出各水平频数，numeric 出 Mean——所以 AGE 只有一行 74.72。</li>
+<li><code class="inl">build_table(tt, df = adsl_small)</code>：数据此刻才进来。返回的 <code class="inl">tbl</code> 是带完整结构元数据（行名、缩进、格式）的表格对象——这就是后面 4.6 能一键导出多种格式的底气。</li>
+<li>输出首列 <code class="inl">all obs</code>：因为我们没写 <code class="inl">split_cols_by()</code>，全表只有一列"所有受试者"。想要 ARM 横排成列？把分割换到列上即可，树的逻辑不变。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>把 rtables 当成"另一个 PROC TABULATE 语句"来<em>执行</em>。rtables 的管道是<strong>先建布局、后灌数据</strong>的两段式：<code class="inl">tt</code> 只是蓝图，可单独存盘、写单元测试、跨表格复用；ODS 过程步则是"跑完即弃"。把蓝图当结果去找数字，是新手最常见的困惑。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 1：rtables 管道里 <code class="inl">split_rows_by("ARM")</code> 的作用是什么？</p>
+<button class="quiz-opt" data-opt="A">立即按 ARM 过滤数据行</button>
+<button class="quiz-opt" data-opt="B">在布局树上声明一层"行方向按 ARM 分割"，数据要等 build_table 才进来</button>
+<button class="quiz-opt" data-opt="C">设置表格的字体与边框样式</button>
+<div class="quiz-exp">选 B。它是纯布局声明（类似 class/BY 的意图），不筛选、不计算；这也是"布局与数据分离"能支撑复用与测试的原因。</div>
+</div>
+
+<h2 id="s4-3">4.3 tern：临床级汇总函数</h2>
+<p>rtables 管结构，<strong>tern 管内容</strong>——它是 pharmaverse 里"临床常用统计量"的函数库。默认的 <code class="inl">analyze()</code> 只给 Mean，而递交级 Table 1 要的是 n、频数（%）、Mean (SD)、Median、Min - Max 这一整套。tern 的 <code class="inl">analyze_vars()</code> 一步到位：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(rtables); library(tern); library(dplyr)
+
+adsl_small &lt;- pharmaversesdtm::dm %&gt;%
+  slice_head(n = 60) %&gt;%
+  select(USUBJID, ARM, SEX, AGE, RACE) %&gt;%
+  mutate(ARM = factor(ARM), SEX = factor(SEX))
+
+tt &lt;- basic_table() %&gt;%
+  split_rows_by("ARM") %&gt;%
+  analyze_vars(c("SEX", "AGE"))   # tern 的临床级汇总，自动按变量类型选统计量
+
+tbl &lt;- build_table(tt, df = adsl_small)
+print(tbl)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，节选前两组）
+                         all obs
+----------------------------------
+Placebo
+  SEX
+    n                      18
+    F                    9 (50%)
+    M                    9 (50%)
+  AGE
+    n                      18
+    Mean (SD)          74.7 (10.2)
+    Median                78.5
+    Min - Max          52.0 - 87.0
+Screen Failure
+  SEX
+    n                      10
+    F                    7 (70%)
+    M                    3 (30%)
+  AGE
+    n                      10
+    Mean (SD)          67.2 (10.5)
+    Median                66.5
+    Min - Max          54.0 - 82.0
+# ……Xanomeline High Dose / Low Dose 两组结构相同，此处省略</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>只把 4.2 的 <code class="inl">analyze(...)</code> 换成 <code class="inl">analyze_vars(...)</code>，其余一字不改——这就是"布局与内容分层"的好处。</li>
+<li><code class="inl">analyze_vars</code> 按变量类型自动派发：factor 型 SEX 得到 n + 各水平频数（%）；numeric 型 AGE 得到 n + Mean (SD) + Median + Min - Max，格式与位数都已按临床惯例处理好。</li>
+<li>需要定制统计量时传 <code class="inl">.stats</code>（如 <code class="inl">.stats = c("n", "mean_sd")</code>），需要改格式传 <code class="inl">.formats</code>——spec 里"Mean ± SD 保留 1 位小数"这类要求就落在这两个参数上。</li>
+</ol></div>
+<div class="note">版本提示：本书环境是 tern 0.9.11，通用变量汇总函数叫 <code class="inl">analyze_vars()</code>；tern ≥ 0.10 中同角色的是 <code class="inl">summarize_vars()</code>（签名以你本机 <code class="inl">?analyze_vars</code> / <code class="inl">?summarize_vars</code> 实际为准）。pharmaverse 迭代快，进项目先看 renv.lock 锁的版本文档。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>输出里混着 <code class="inl">Screen Failure</code> 组就直接交付。SAS 里你习惯先 <code class="inl">where ITTFL='Y'</code> 再进 PROC；rtables/tern <strong>不会替你筛人群</strong>——分析集过滤（SAFFL/ITTFL/ACTARM）必须在进 <code class="inl">build_table()</code> 之前做完，且写进程序头，与 spec 的"分析人群"条款对齐。</div>
+
+<h2 id="s4-4">4.4 tableone：一行出 Table 1</h2>
+<p>不是每张表都要走递交级流水线。写论文、做探索、给临床同事快速看基线均衡性时，<code class="inl">tableone</code> 的 <code class="inl">CreateTableOne()</code> 是最省事的"Table 1 生成器"，还自带组间检验：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(tableone); library(dplyr)
+
+adsl_small &lt;- pharmaversesdtm::dm %&gt;%
+  slice_head(n = 60) %&gt;%
+  select(USUBJID, ARM, SEX, AGE, RACE) %&gt;%
+  mutate(ARM = factor(ARM), SEX = factor(SEX))
+
+t1 &lt;- CreateTableOne(vars = c("AGE", "SEX"), strata = "ARM", data = adsl_small)
+print(t1)                    # 加检验：print(t1, test = TRUE)
+                             # 出总体列：print(t1, ...) 前先不带 strata 建一份合并</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+                 Stratified by ARM
+                  Placebo       Screen Failure Xanomeline High Dose
+  n                  18            10             15
+  AGE (mean (SD)) 74.72 (10.17) 67.20 (10.53)  66.73 (8.86)
+  SEX = M (%)         9 (50.0)      3 (30.0)       9 (60.0)
+                 Stratified by ARM
+                  Xanomeline Low Dose p      test
+  n                  17
+  AGE (mean (SD)) 74.12 (9.75)         0.044
+  SEX = M (%)        10 (58.8)         0.446</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">vars</code> 指定入表变量，<code class="inl">strata = "ARM"</code> 指定分层（横排）变量——语义上就是 PROC FREQ/MEANS 加 BY 组横向拼接。</li>
+<li>numeric 变量默认出 mean (SD)，factor 默认出第二水平的 n (%)（这里 SEX = M）；<code class="inl">print(t1, test = TRUE)</code> 追加组间 p 值，<code class="inl">nonnormal = "AGE"</code> 可切换中位数/IQR 呈现。</li>
+<li>输出被控制台宽度折成了两段（p、test 列甩到了下半块）——宽表在窄控制台的常态，导出时不受影响。</li>
+</ol></div>
+
+<h2 id="s4-5">4.5 gtsummary：漂亮表与 p 值</h2>
+<p><code class="inl">gtsummary</code> 是社区最流行的汇总表包：自动识别变量类型与标签、内置常用检验、与 Quarto/knitr 渲染深度集成。<code class="inl">tbl_summary() %&gt;% add_p()</code> 两行得到带 p 值的分组汇总：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(gtsummary); library(dplyr)
+options(width = 200)   # 加宽控制台，避免下面的文本摘要折行
+
+adsl_small &lt;- pharmaversesdtm::dm %&gt;%
+  slice_head(n = 60) %&gt;%
+  select(USUBJID, ARM, SEX, AGE, RACE) %&gt;%
+  mutate(ARM = factor(ARM), SEX = factor(SEX))
+
+t &lt;- tbl_summary(adsl_small %&gt;% select(ARM, AGE, SEX, RACE), by = ARM) %&gt;%
+  add_p()                  # AGE 自动 Kruskal-Wallis，分类变量 Fisher 精确检验
+
+print(as.data.frame(t))    # 控制台只能拿到文本摘要；真身在 HTML/Word 渲染里</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，width=200）
+                **Characteristic** **Placebo**  \nN = 18 **Screen Failure**  \nN = 10 **Xanomeline High Dose**  \nN = 15 **Xanomeline Low Dose**  \nN = 17 **p-value**
+1                              Age           79 (64, 84)                  67 (57, 76)                        67 (57, 75)                       76 (68, 81)       0.033
+2                              SEX                  &lt;NA&gt;                         &lt;NA&gt;                               &lt;NA&gt;                              &lt;NA&gt;         0.5
+3                                F               9 (50%)                      7 (70%)                            6 (40%)                           7 (41%)        &lt;NA&gt;
+4                                M               9 (50%)                      3 (30%)                            9 (60%)                          10 (59%)        &lt;NA&gt;
+5                             Race                  &lt;NA&gt;                         &lt;NA&gt;                               &lt;NA&gt;                              &lt;NA&gt;         0.2
+6 AMERICAN INDIAN OR ALASKA NATIVE                0 (0%)                      1 (10%)                           1 (6.7%)                            0 (0%)        &lt;NA&gt;
+7        BLACK OR AFRICAN AMERICAN               2 (11%)                      2 (20%)                             0 (0%)                          1 (5.9%)        &lt;NA&gt;
+8                            WHITE              16 (89%)                      7 (70%)                           14 (93%)                          16 (94%)        &lt;NA&gt;</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">by = ARM</code>：按 ARM 分列（未加引号，tidy-select 语法）；每列表头自动带 <code class="inl">N = 18</code> 组内例数。</li>
+<li><code class="inl">add_p()</code>：按变量类型自动选检验——连续非正态用 Kruskal-Wallis，分类用 Fisher 精确检验；可用 <code class="inl">test = list(...)</code> 指定。</li>
+<li><code class="inl">as.data.frame(t)</code>：gtsummary 对象的本体是"待渲染的表"，转成 data.frame 才能在控制台看到格式化后的文本；<code class="inl">&lt;NA&gt;</code> 是父级行（SEX/Race 标题行）没有统计值，渲染成 HTML 后是正常缩进结构。</li>
+</ol></div>
+<div class="note">渲染环境：gtsummary 表在 <strong>RStudio / Quarto / R Markdown</strong> 里会渲染成漂亮的 HTML（gt 引擎），也可 <code class="inl">as_flex_table()</code> 进 Word。纯 Rscript 控制台没有渲染引擎，只能像上面那样看文本摘要——这不是 bug，是"表格对象与渲染分离"的设计，和 SAS log 里看 ODS 列表输出同理。</div>
+
+<h2 id="s4-6">4.6 导出三件套：Word / Excel / 纯文本</h2>
+<p>SAS 用 <code class="inl">ODS RTF / TAGSETS.EXCELXP / LISTING</code> 切换目的地；R 里表格对象照样一处建、多处导。三件最常用的出口：<code class="inl">flextable</code>→Word、<code class="inl">openxlsx</code>→Excel、<code class="inl">rtables::export_as_txt</code>→定宽纯文本。按 QC 纪律，写完文件必须验证存在与大小：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(rtables); library(tern); library(flextable); library(openxlsx); library(dplyr)
+
+adsl_small &lt;- pharmaversesdtm::dm %&gt;%
+  slice_head(n = 60) %&gt;%
+  select(USUBJID, ARM, SEX, AGE, RACE) %&gt;%
+  mutate(ARM = factor(ARM), SEX = factor(SEX))
+tmpdir &lt;- file.path(tempdir(), "ch4_export"); dir.create(tmpdir, showWarnings = FALSE)
+
+# 1) flextable -&gt; Word (.docx)
+ft &lt;- flextable(head(adsl_small[, c("USUBJID","ARM","SEX","AGE")], 5))
+docx_path &lt;- file.path(tmpdir, "t1_demo.docx")
+save_as_docx(ft, path = docx_path)
+
+# 2) openxlsx -&gt; Excel (.xlsx)
+xlsx_path &lt;- file.path(tmpdir, "t1_demo.xlsx")
+write.xlsx(head(adsl_small[, c("USUBJID","ARM","SEX","AGE")], 20), xlsx_path)
+
+# 3) rtables -&gt; 定宽纯文本（类 listing/RTF 观感，本版本参数名是 file）
+tbl &lt;- build_table(basic_table() %&gt;% split_rows_by("ARM") %&gt;%
+  analyze_vars(c("SEX","AGE")), df = adsl_small)
+txt_path &lt;- file.path(tmpdir, "t1_demo.txt")
+invisible(export_as_txt(tbl, file = txt_path))
+
+# QC 纪律：落盘后确认文件存在与大小
+for (f in c(docx_path, xlsx_path, txt_path))
+  cat(basename(f), "exists:", file.exists(f), "size:", file.size(f), "bytes\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，文件写入临时目录）
+t1_demo.docx exists: TRUE size: 14519 bytes
+t1_demo.xlsx exists: TRUE size: 6944 bytes
+t1_demo.txt exists: TRUE size: 1512 bytes</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">flextable(head(...))</code>：把 data.frame 变成可精调样式的 Word 表对象；<code class="inl">save_as_docx()</code> 直接落 .docx。想调列宽、表头、边框，在 flextable 对象上用 <code class="inl">width()/theme_booktabs()</code> 等继续加工。</li>
+<li><code class="inl">write.xlsx()</code>：openxlsx 写 Excel 不需要 Java（对比 rJava 系的 xlsx 包），适合批量出数据附录。</li>
+<li><code class="inl">export_as_txt(tbl, file = ...)</code>：rtables 表格对象一键导出定宽文本——行名、缩进、列对齐全部保留，正是 SAS LISTING/类 RTF 交付的观感。注意本书 rtables 0.6.16 的参数名是 <code class="inl">file</code>，新版本才叫 <code class="inl">path</code>。</li>
+<li>最后的 <code class="inl">for + cat(file.exists, file.size)</code>：SAS 里你会在 log 里找 "NOTE: The file ... has been created"；R 脚本没有自动 log，<strong>验证语句要自己写</strong>——这三行就是最小化的"落盘 QC"。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>期待一条 <code class="inl">ODS RTF;</code> 式的"全局目的地开关"。R 里每个导出函数只对自己那份对象负责，没有隐式全局状态；好处是不会出现"忘了 ODS RTF CLOSE 把下个 PROC 也卷进 RTF"的事故，代价是每次导出都要显式给路径并自行验证。</div>
+<div class="note">RTF 路径的取舍：本版 rtables 自带 <code class="inl">export_as_txt / export_as_pdf / export_as_tsv</code>（pdf 经 officer 分页），<strong>没有直接的 export_as_rtf</strong>。需要 RTF 交付时两条路：① 用 Quarto 的 <code class="inl">format: rtf</code> 渲染整份报告（对应 ODS RTF 的"文档级"用法，见 4.7）；② 定宽 txt 满足多数 listing 场景。与 SAS 相比：ODS RTF 一步出文档，R 把"表格对象"和"文档装配"分成两层，装配交给 Quarto/flextable/officer，换取的是每种格式都可编程精调。</div>
+<div class="quiz" data-answer="C">
+<p class="quiz-q">测验 2：把 rtables 表格导出为纯文本/类 RTF 交付用哪个函数？</p>
+<button class="quiz-opt" data-opt="A">ggsave()</button>
+<button class="quiz-opt" data-opt="B">save_as_docx()</button>
+<button class="quiz-opt" data-opt="C">export_as_txt()</button>
+<div class="quiz-exp">选 C。<code class="inl">export_as_txt()</code> 是 rtables 自带的定宽文本导出；ggsave 存的是 ggplot 图形，save_as_docx 是 flextable 的 Word 出口。</div>
+</div>
+
+<h2 id="s4-7">4.7 Quarto 参数化：一份 qmd 出 N 份报告</h2>
+<p>ODS 时代你用 <code class="inl">%let arm=Placebo;</code> + 驱动脚本批量出报告；Quarto 把"参数、代码、叙述、输出"装进同一个 .qmd 文件并纳入 Git。下面的骨架<strong>纯展示</strong>——Quarto CLI 需要单独安装（quarto.org，不随 R 附带），本机未装也能读懂每一行：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># ---- t14_1_1.qmd：YAML 头声明参数 ----
+# ---
+# title: "Table 14.1.1 Demographics"
+# format: html        # 也可换 rtf / docx / pdf
+# params:
+#   arm: "Placebo"          # 渲染时可被 -P 覆盖
+#   popfl: "ITTFL"          # 用哪个分析人群标志
+# ---
+#
+# ```{r}
+# #| label: build-t1
+# library(rtables); library(tern)
+# adsl &lt;- readRDS("data/adsl.rds")
+# adsl_sub &lt;- adsl[adsl[[params$popfl]] == "Y" &amp; adsl$ARM == params$arm, ]
+# tbl &lt;- build_table(
+#   basic_table() %&gt;% analyze_vars(c("SEX", "AGE", "RACE")),
+#   df = adsl_sub
+# )
+# print(tbl)
+# ```</code></pre>
+<pre class="code" style="white-space:pre"><code class="lang-r"># ---- 终端：按 ARM 参数渲染两份报告 ----
+# quarto render t14_1_1.qmd -P arm="Placebo"              -o t14_1_1_placebo.html
+# quarto render t14_1_1.qmd -P arm="Xanomeline Low Dose"  -o t14_1_1_xlo.html</code></pre>
+<pre class="out" style="white-space:pre"># 示例输出(节选)
+Processing 't14_1_1.qmd'
+rendering ... done
+Output created: t14_1_1_xlo.html</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>YAML 的 <code class="inl">params:</code> 块定义参数及默认值，正文代码里用 <code class="inl">params$arm</code> 引用——等价于 SAS 宏参数，但有默认值、有类型、随文件版本化。</li>
+<li><code class="inl">format: html</code> 可整体换成 <code class="inl">rtf</code>/<code class="inl">docx</code>：这就是 R 世界的"ODS 目的地"开关，只是作用于整份文档。</li>
+<li><code class="inl">quarto render -P arm=... -o ...</code>：命令行覆盖参数并指定输出名；批处理出 N 份报告就是一个 for 循环调它，可进 CI 定时重跑。</li>
+</ol></div>
+
+<h2 id="s4-8">4.8 追溯性清单：让每张表都能"验明正身"</h2>
+<p>TLF 自动化的最后一公里不是代码，是证据链。上线前逐项打勾：</p>
+<div class="note"><strong>追溯性 checklist（贴在每个 TFL 项目的 README 里）：</strong>
+<ol>
+<li><strong>环境锁</strong>：<code class="inl">renv.lock</code> 已提交（R 版本 + 全部包版本，见第 0 章）；CI 用 <code class="inl">renv::restore()</code> 复现。</li>
+<li><strong>会话留痕</strong>：每个程序结尾把 <code class="inl">sessionInfo()</code> 写入日志，例如 <code class="inl">writeLines(capture.output(sessionInfo()), "logs/t14_1_1_session.log")</code>。</li>
+<li><strong>spec 双向链接</strong>：程序头注释写明 spec 文件、表格编号与版本号；输出文件名/标题严格按 spec 命名（t14_1_1_*）。</li>
+<li><strong>日志留存</strong>：<code class="inl">Rscript t14_1_1.R &gt;&gt; logs/t14_1_1.log 2&gt;&amp;1</code>（stdout+stderr 全收），message/warning 计数进 QC 审阅，类比 SAS log 的 ERROR/WARNING 检查。</li>
+<li><strong>输入数据版本</strong>：ADaM 数据集用只读目录 + 文件校验（md5/大小），程序里记录读取路径与时间戳。</li>
+<li><strong>代码版本</strong>：Git commit hash 可查；产物文件名或页脚带上版本与生成时间。</li>
+<li><strong>QC 记录</strong>：双编程的 diff 结果（diffdf/waldo/testthat）归档，谁跑、何时跑、结论如何。</li>
+</ol></div>
+
+<h2 id="s4-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://pharmaverse.github.io/rtables/">rtables 官方文档</a> — 布局树 API 与导出全参考，递交级表格的基座 <span class="tag">进阶</span></li>
+<li><a href="https://pharmaverse.github.io/tern/">tern 官方文档</a> — 临床统计量函数库（analyze_vars/summarize_vars、生存、AE 汇总） <span class="tag">进阶</span></li>
+<li><a href="https://www.danieldsjoberg.com/gtsummary/">gtsummary 官方文档</a> — 最友好的汇总表教程，Gallery 里全是可复制示例 <span class="tag">入门</span></li>
+<li><a href="https://davidgohel.github.io/flextable/">flextable 官方文档</a> — Word/PPT 表格精调， officer 家族 <span class="tag">入门</span></li>
+<li><a href="https://quarto.org">Quarto 官网</a> — 参数化报告与多格式渲染，CLI 需单独安装 <span class="tag">参考</span></li>
+<li>本地工具：<a href="../tfl-review-tool">../tfl-review-tool</a> — 本站配套的 TFL 审阅小工具，配合本章产物练习 QC 流程 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s4-ex">本章练习</h2>
+<ol>
+<li>（易）给 4.4 的 Table 1 加一列"总体"：tableone 再建一个不带 strata 的对象并并排打印，或改用 gtsummary 的 <code class="inl">add_overall()</code>，比较两条路的工作量。</li>
+<li>（中）用 rtables + tern 出一张 AE SOC 频数表：取 <code class="inl">pharmaversesdtm::ae</code>，按 <code class="inl">AEBODSYS</code> 用 <code class="inl">summarize_occurrences()</code>（或 <code class="inl">analyze</code> + <code class="inl">table()</code>）统计每个 SOC 的例数与百分比，最后 <code class="inl">sort_at_path()</code> 按频数降序——这就是递交级 Table 14.3.1 的雏形。</li>
+<li>（难）安装 Quarto CLI，把 4.7 的 qmd 骨架跑通，用 <code class="inl">-P arm=...</code> 渲染出 Placebo 与 Xanomeline Low Dose 两份 HTML，并让标题里的表格编号随参数变化（提示：YAML 里 <code class="inl">title: "Table 14.1.1 - `r params$arm`"</code>）。</li>
+</ol>
+<p class="lede">下一章：从"会出表"到"工程化"——函数式编程、testthat 自动化测试、CI 与性能优化，让你的 TLF 流水线经得起审计与重构。</p>
+</article></main>
+<aside class="toc">
+<a href="#s4-1">4.1 TLF 流水线总览</a>
+<a href="#s4-2">4.2 rtables 基础</a>
+<a href="#s4-3">4.3 tern 临床汇总</a>
+<a href="#s4-4">4.4 tableone</a>
+<a href="#s4-5">4.5 gtsummary</a>
+<a href="#s4-6">4.6 导出三件套</a>
+<a href="#s4-7">4.7 Quarto 参数化</a>
+<a href="#s4-8">4.8 追溯性清单</a>
+<a href="#s4-res">章末资源</a>
+<a href="#s4-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

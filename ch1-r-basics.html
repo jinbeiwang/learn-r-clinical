@@ -1,0 +1,377 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 1 章 R 语言基础：SAS 用户对照速成 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a class="on" href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 1 章</div>
+<div class="chapnum">01</div>
+<h1>R 语言基础：SAS 用户对照速成</h1>
+<p class="lede">你已经会 SAS，缺的只是一层翻译。本章把 SAS 用户的语言直觉逐条映射到 R——向量、factor、NA、索引、三大范式，全程用 ADSL 与 AE 的真实语境说话。</p>
+
+<h2 id="s1-1">1.1 向量与强制类型</h2>
+<p>R 里一切都是向量，没有 SAS 那种"标量"。当一个向量里混进不同类型的元素，R 不会报错，而是<strong>强制（coerce）</strong>到能容纳所有元素的"最宽"类型：<code class="inl">logical &lt; integer &lt; double &lt; character</code>。这就像 SAS 把数值硬塞进字符变量时自动 PUT，只是 R 做得悄无声息。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 混合类型向量：c(1, "a") 会被强制（coerce）为 character
+v <- c(1, "a")
+typeof(v)          # "character"
+is.character(v)    # TRUE
+is.numeric(v)      # FALSE
+class(v)           # "character"
+
+# is.* 家族给同一个向量做体检
+x <- c(1L, 2L)     # 后缀 L = 显式 integer
+typeof(x)          # "integer"
+is.integer(x)      # TRUE
+is.numeric(x)      # TRUE（integer 也算 numeric）
+is.double(x)       # FALSE</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+[1] "character"
+[1] TRUE
+[1] FALSE
+[1] "character"
+[1] "integer"
+[1] TRUE
+[1] TRUE
+[1] FALSE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">typeof()</code> 看的是底层存储类型（内存里到底是什么），<code class="inl">class()</code> 看的是面向对象层面的类。做数据核查时先 <code class="inl">typeof()</code>，能一眼发现"本该是数值却被读成字符"的导入事故。</li>
+<li><code class="inl">c(1, "a")</code> 里数字 <code class="inl">1</code> 被强制成字符 <code class="inl">"1"</code>，所以 <code class="inl">is.numeric()</code> 返回 <code class="inl">FALSE</code>——这正是 SAS 用户最容易栽的坑：一列里混入一个字符，整列就"变性"了。</li>
+<li><code class="inl">is.integer()</code> 与 <code class="inl">is.numeric()</code> 都对 <code class="inl">1L</code> 返回 <code class="inl">TRUE</code>：integer 是 numeric 的子类。字面量 <code class="inl">1</code> 默认是 double，<code class="inl">1L</code> 才是 integer。</li>
+</ol></div>
+<div class="quiz" data-answer="C">
+<p class="quiz-q">测验 1：向量 c(1, TRUE, "a") 的类型（typeof）是什么？</p>
+<button class="quiz-opt" data-opt="A">integer</button>
+<button class="quiz-opt" data-opt="B">double</button>
+<button class="quiz-opt" data-opt="C">character</button>
+<div class="quiz-exp">选 C。只要向量里出现一个字符元素，全部元素都被强制为 character：1 变 "1"、TRUE 变 "TRUE"。强制顺序永远是 logical &lt; integer &lt; double &lt; character，往最宽的类型靠。</div>
+</div>
+
+<h2 id="s1-2">1.2 factor：临床里的"有序类别"</h2>
+<p>factor 是 R 处理分类变量的核心工具，天然对应 SAS 里的格式化类别变量（如 ARM、VISIT）。它的杀手锏是 <code class="inl">levels</code>：你可以显式规定顺序，让"安慰剂→低剂量→高剂量"或"V1→V2→V3"按临床逻辑而非字母表排序。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 指定 levels 顺序（临床常见：治疗组、访视排序）
+arm <- factor(c("b", "a"), levels = c("a", "b"))
+arm
+levels(arm)        # "a" "b"
+table(arm)         # 按 levels 顺序计数，缺的层级也保留为 0
+
+# 按 levels 排序：sort() 用层级顺序而非字母表
+visit <- factor(c("V3", "V1", "V2"), levels = c("V1", "V2", "V3"))
+sort(visit)
+
+# as.integer(factor) 返回层级下标，不是原数值！
+as.integer(factor(c(10, 20), levels = c(10, 20)))   # 1 2（不是 10 20）</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+[1] b a
+Levels: a b
+[1] "a" "b"
+arm
+a b 
+1 1 
+[1] V1 V2 V3
+Levels: V1 V2 V3
+[1] 1 2</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">factor(c("b","a"), levels=c("a","b"))</code>：数据顺序是 b、a，但 levels 规定 a 在前，所以 <code class="inl">sort()</code>、报表、图例都会按 a→b 出。</li>
+<li><code class="inl">table(arm)</code> 按 levels 计数，即便某个 level 在数据里一次都没出现，也会保留为 0——这对"某治疗组无人入组也要在表里显示"的递交要求很关键。</li>
+<li><code class="inl">sort(visit)</code> 得到 V1 V2 V3 而非字母序，因为 factor 排序用的是 levels 的位置，不是字符串本身。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>① <code class="inl">as.integer(factor)</code> 返回的是<strong>层级下标</strong>（1、2、3…），不是原始数值——上面 <code class="inl">factor(c(10,20))</code> 转 integer 得到的是 <code class="inl">1 2</code> 而非 <code class="inl">10 20</code>。要拿回原值请用 <code class="inl">as.numeric(as.character(f))</code>。② factor 与 SAS 字符变量不同：它带着 levels 元数据，直接和字符串比较虽可行，但一旦 levels 顺序或取值集变化，<code class="inl">==</code>、排序、合并的行为都会跟着变，务必显式设定 levels。</div>
+
+<h2 id="s1-3">1.3 NA 的语义与传播</h2>
+<p>R 的缺失值 <code class="inl">NA</code> 表示"未知"。它的核心规则是<strong>传播</strong>：任何和 NA 做的运算，结果还是 NA，因为"未知 + 1 仍然未知"。这与 SAS 的 <code class="inl">.</code> 在算术里常被当 0 处理（或参与比较时落在数轴最左端）截然不同，是 SAS 用户迁移时最高频的 bug 源。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># NA 会"污染"整个统计量（与 SAS 的 . 处理不同）
+mean(c(1, NA))                # NA
+mean(c(1, NA), na.rm = TRUE)  # 1
+sum(c(1, NA))                 # NA
+
+# NA 的传播：任何含 NA 的逐元素运算结果仍是 NA
+is.na(c(1, NA))               # FALSE  TRUE
+c(1, NA) + 1                  # 2  NA
+c(1, NA) > 0                  # TRUE NA（比较也是 NA）</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+[1] NA
+[1] 1
+[1] NA
+[1] FALSE  TRUE
+[1]  2 NA
+[1] TRUE   NA</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">mean(c(1, NA))</code> 直接返回 <code class="inl">NA</code>——聚合函数默认"遇缺即缺"。要忽略缺失必须显式写 <code class="inl">na.rm = TRUE</code>，这时结果是 1。</li>
+<li><code class="inl">is.na()</code> 是向量化的缺失检测，等价于 SAS 的 <code class="inl">MISSING()</code>，但它对每个元素返回 TRUE/FALSE，可直接当逻辑索引用来筛掉缺失行。</li>
+<li><code class="inl">c(1, NA) + 1</code> 得 <code class="inl">2 NA</code>：第一个元素照常算成 2，第二个 NA 传播保持 NA。连比较 <code class="inl">&gt; 0</code> 都返回 <code class="inl">NA</code>（不是 TRUE 也不是 FALSE），这在 <code class="inl">if</code>/<code class="inl">filter</code> 里会引发"missing value where TRUE/FALSE needed"报错。</li>
+</ol></div>
+<div class="note">对照 SAS：<code class="inl">.</code> 在 <code class="inl">SUM</code>/<code class="inl">MEANS</code> 里被自动忽略，在算术表达式里常按 0 参与；而 R 的 <code class="inl">NA</code> 默认"一票否决"，必须用 <code class="inl">na.rm=TRUE</code>、<code class="inl">is.na()</code> 或 <code class="inl">coalesce()</code> 显式处理。养成习惯：写任何聚合前先想"这列有没有 NA"。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 2：c(1, NA) + 1 的结果是什么？</p>
+<button class="quiz-opt" data-opt="A">c(2, 1)（NA 被当作 0）</button>
+<button class="quiz-opt" data-opt="B">c(2, NA)（NA 传播，非缺失元素照常计算）</button>
+<button class="quiz-opt" data-opt="C">整个向量变成一个 NA，或直接报错</button>
+<div class="quiz-exp">选 B。运算是逐元素的：1+1=2，而 NA+1 仍是 NA。这正是"NA 传播"——它不会像 SAS 的 . 那样被悄悄当成 0，也不会污染旁边的正常元素，只是自己那一位保持未知。</div>
+</div>
+
+<h2 id="s1-4">1.4 索引与向量回收</h2>
+<p>R 的索引从 1 开始（和 SAS 数组一致，不是 Python 的 0）。除了位置索引，R 最强大的是<strong>逻辑索引</strong>：把一个条件表达式直接放进方括号，TRUE 的位置被保留。此外要警惕<strong>向量回收</strong>——长度不等时短向量会被循环补齐，这可能悄悄掩盖 bug。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">options(warn = 1)   # 让警告就地打印，便于教学演示
+
+# 位置索引（R 是 1-based，与 SAS 数组一致）
+x <- c(10, 20, 30, 40, 50)
+x[2:4]             # 20 30 40
+x[c(1, 5)]         # 10 50
+
+# 逻辑索引：把条件当"掩码"直接筛选
+x[x > 20]          # 30 40 50
+
+# 向量回收（recycling）：长度不等时短向量被循环补齐
+1:6 + 1:2          # 6 是 2 的倍数，安静回收 -> 2 4 4 6 6 8
+1:3 + 1:2          # 长度 3 不是 2 的倍数 -> 触发警告</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+[1] 20 30 40
+[1] 10 50
+[1] 30 40 50
+[1] 2 4 4 6 6 8
+Warning in 1:3 + 1:2 :
+  longer object length is not a multiple of shorter object length
+[1] 2 4 4</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">x[2:4]</code> 取第 2 到第 4 个元素；<code class="inl">x[c(1,5)]</code> 用向量指定任意位置，甚至可重复、可乱序。</li>
+<li><code class="inl">x[x &gt; 20]</code>：<code class="inl">x &gt; 20</code> 先生成 <code class="inl">FALSE FALSE TRUE TRUE TRUE</code> 这层"掩码"，再拿它索引 x，留下大于 20 的三个值。这就是 R 版的 <code class="inl">WHERE</code>，只是作用在向量上。</li>
+<li><code class="inl">1:6 + 1:2</code>：6 是 2 的整数倍，R 安静地把 <code class="inl">1 2</code> 循环三遍补齐，得 <code class="inl">2 4 4 6 6 8</code>，不报警。</li>
+<li><code class="inl">1:3 + 1:2</code>：长度 3 不是 2 的倍数，回收后对不齐，于是抛出警告 <code class="inl">longer object length is not a multiple of shorter object length</code>——但注意它<strong>只警告不报错</strong>，结果 <code class="inl">2 4 4</code> 照出，很容易被忽略。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>SAS 里数组越界或长度不匹配通常是硬 ERROR；R 的向量回收却是"善意补位 + 顶多一句警告"。在 <code class="inl">mutate(NEW = A + B)</code> 时若 A、B 长度不等（例如 B 只有 1 个或恰好整除），R 会静默回收得到看似合理的结果。GxP 环境里，任何回收警告都必须当作数据 integrity 事件追查，而不是按掉继续跑。</div>
+
+<h2 id="s1-5">1.5 data.frame 与 tibble</h2>
+<p>data.frame 是 R 的"数据集"，最接近 SAS DATA set 的心智。tibble 是 tidyverse 对 data.frame 的现代重写：打印更克制、不擅自把字符转 factor、对可疑操作更严格。查看结构用 <code class="inl">str()</code>（base）或 <code class="inl">glimpse()</code>（dplyr），二者相当于精简版 <code class="inl">PROC CONTENTS</code>。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(dplyr)
+
+# 迷你 ADSL：3 名受试者
+adsl_df <- data.frame(
+  USUBJID = c("S1", "S2", "S3"),
+  ARM     = c("Placebo", "Active", "Placebo"),
+  AGE     = c(45, 60, NA),
+  stringsAsFactors = FALSE
+)
+adsl_tb <- tibble::as_tibble(adsl_df)
+
+str(adsl_df)       # base data.frame 结构：类型 + 维度 + 预览
+glimpse(adsl_tb)   # tibble / dplyr 视角：更清爽，自动按列换行</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+'data.frame':	3 obs. of  3 variables:
+ $ USUBJID: chr  "S1" "S2" "S3"
+ $ ARM    : chr  "Placebo" "Active" "Placebo"
+ $ AGE    : num  45 60 NA
+Rows: 3
+Columns: 3
+$ USUBJID &lt;chr&gt; "S1", "S2", "S3"
+$ ARM     &lt;chr&gt; "Placebo", "Active", "Placebo"
+$ AGE     &lt;dbl&gt; 45, 60, NA</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">stringsAsFactors = FALSE</code>：老版本 R 默认把字符列转成 factor，会带来意外；显式关掉是现代习惯（R 4.0+ 已默认 FALSE，但写清楚更稳妥）。</li>
+<li><code class="inl">str()</code> 告诉你"3 个观测、3 个变量"，并逐列列出类型（chr/num）和前几个值——这就是你核查 ADSL 结构、确认 AGE 没被读成字符的第一眼。</li>
+<li><code class="inl">glimpse()</code> 把同样的信息排得更整齐：先报 Rows/Columns，每列一行，类型用 <code class="inl">&lt;chr&gt;/&lt;dbl&gt;</code> 标注，宽数据也能看清，适合放进日志或 QC 记录。</li>
+</ol></div>
+<div class="note">心智对照：把 <code class="inl">str()</code>/<code class="inl">glimpse()</code> 当成"随手版 PROC CONTENTS"。区别是 SAS 的 CONTENTS 还会给变量创建顺序、标签、格式；R 里这些额外信息要靠 <code class="inl">attributes()</code>、<code class="inl">labelled</code> 包（haven 导入时带 label）另行查看。</div>
+
+<h2 id="s1-6">1.6 三范式同做一件事</h2>
+<p>同一个任务——筛选 <code class="inl">ARM=="Placebo"</code> 并按 <code class="inl">SITEID</code> 求 <code class="inl">AGE</code> 均值——R 有三种主流写法：base、dplyr、data.table。它们结果一致，风格迥异。作为 SAS 用户，你会觉得 base 像 PROC MEANS、dplyr 像读得懂的 SQL、data.table 像带 BY 的高效 DATA step。先都认识，全书主线用 dplyr。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(dplyr)
+library(data.table)
+
+# 迷你 ADSL：跨 3 个中心、含安慰剂组
+adsl <- data.frame(
+  SITEID = c("01", "01", "02", "02", "03"),
+  ARM    = c("Placebo", "Active", "Placebo", "Placebo", "Active"),
+  AGE    = c(45, 50, 60, 55, 70),
+  stringsAsFactors = FALSE
+)
+
+# 范式一：base R 的 aggregate()
+base_res <- aggregate(AGE ~ SITEID, data = adsl[adsl$ARM == "Placebo", ], FUN = mean)
+
+# 范式二：dplyr 链式（读作"然后"）
+dplyr_res <- adsl |>
+  filter(ARM == "Placebo") |>
+  group_by(SITEID) |>
+  summarise(mean_age = mean(AGE, na.rm = TRUE), .groups = "drop")
+
+# 范式三：data.table 的 DT[i, j, by]
+dt <- as.data.table(adsl)
+dt_res <- dt[ARM == "Placebo", .(mean_age = mean(AGE)), by = SITEID]
+
+cat("--- base::aggregate ---\n");   print(base_res)
+cat("--- dplyr ---\n");             print(as.data.frame(dplyr_res))
+cat("--- data.table ---\n");        print(dt_res)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+--- base::aggregate ---
+  SITEID  AGE
+1     01 45.0
+2     02 57.5
+--- dplyr ---
+  SITEID mean_age
+1     01     45.0
+2     02     57.5
+--- data.table ---
+   SITEID mean_age
+   &lt;char&gt;    &lt;num&gt;
+1:     01     45.0
+2:     02     57.5</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><strong>base</strong>：<code class="inl">aggregate(AGE ~ SITEID, ...)</code> 用公式语法"AGE 按 SITEID 聚合"，数据先用 <code class="inl">adsl[adsl$ARM=="Placebo", ]</code> 行筛选，<code class="inl">FUN=mean</code> 指定聚合函数。结果列名沿用 AGE。</li>
+<li><strong>dplyr</strong>：<code class="inl">|></code> 把上一步结果喂给下一个动词，读作"取 adsl，<em>然后</em>筛 Placebo，<em>然后</em>按中心分组，<em>然后</em>汇总均值"。<code class="inl">.groups="drop"</code> 让结果回到普通未分组表，避免后续操作被分组状态干扰。</li>
+<li><strong>data.table</strong>：<code class="inl">dt[i, j, by]</code> 三段式——i 是筛选行（<code class="inl">ARM=="Placebo"</code>）、j 是算什么（<code class="inl">.(mean_age=mean(AGE))</code>）、by 是按什么分组（SITEID）。语法紧凑、速度快，大数据首选。</li>
+<li>三段输出的均值完全一致（中心 01 为 45.0，中心 02 为 57.5），只是列名和排版风格不同。选哪个范式看团队规范与数据量，逻辑是等价的。</li>
+</ol></div>
+
+<h2 id="s1-7">1.7 函数与管道</h2>
+<p>R 的函数是"一等公民"，且有<strong>词法作用域</strong>：函数只看得见自己的参数和定义它的环境，绝不像 SAS macro 那样到处留全局变量。管道 <code class="inl">|></code> 则让"一步接一步"的数据处理写成一串可读的动词链。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(lubridate)
+library(dplyr)
+
+# 派生年龄：从出生日到参考日的整年数（AGE 派生逻辑）
+derive_age <- function(brth, ref) {
+  floor(interval(brth, ref) / dyears(1))
+}
+derive_age(ymd("1975-03-10"), ymd("2024-06-01"))   # 49
+
+# |> 管道链：读 ADSL -> 逐列派生 -> 筛选
+adsl <- tibble(
+  USUBJID = c("S1", "S2"),
+  BRTHDT  = ymd(c("1975-03-10", "1960-11-22")),
+  RFSTDTC = ymd(c("2024-06-01", "2024-05-15"))
+)
+adsl |>
+  mutate(AGE = derive_age(BRTHDT, RFSTDTC)) |>
+  filter(AGE >= 50)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+[1] 49
+# A tibble: 1 x 4
+  USUBJID BRTHDT     RFSTDTC      AGE
+  &lt;chr&gt;   &lt;date&gt;     &lt;date&gt;     &lt;dbl&gt;
+1 S2      1960-11-22 2024-05-15    63</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">derive_age <- function(brth, ref) {...}</code>：定义一个纯函数，输入出生日与参考日，输出年龄。所有依赖都来自参数，函数体内不碰任何全局变量——这让它可以单元测试、可以在任何脚本复用。</li>
+<li><code class="inl">interval(brth, ref) / dyears(1)</code> 算出两个日期间隔相当于多少年（带小数），<code class="inl">floor()</code> 向下取整得到周岁。单独调用 <code class="inl">derive_age(...)</code> 返回 49。</li>
+<li><code class="inl">mutate(AGE = derive_age(BRTHDT, RFSTDTC))</code>：函数是向量化的，一次对整列 BRTHDT、RFSTDTC 逐行算出 AGE 并新增列，无需写循环。</li>
+<li><code class="inl">filter(AGE >= 50)</code> 只留下年龄 ≥50 的受试者，结果剩 S2（63 岁）。整条链读下来就是"派生年龄，然后筛选"，与 SAS 的 DATA step + IF 意图一致，但没有隐式的行指针和全局副作用。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>SAS macro 靠 <code class="inl">%let</code>/<code class="inl">&amp;global</code> 传递中间值，宏跑完常常在符号表里留下一堆全局宏变量，互相污染、难以追踪。R 函数是词法作用域：函数内部的变量出了函数就消失，除非显式 <code class="inl">return</code>。迁移时不要再想着"设个全局变量传值"，而应把中间结果作为函数参数传入、作为返回值传出，副作用可控、可测、可审计。</div>
+
+<h2 id="s1-8">1.8 日期与字符串</h2>
+<p>临床数据离不开日期解析和文本筛选。<code class="inl">lubridate</code> 让日期运算说人话，<code class="inl">stringr</code> 提供一致的字符串动词，二者都比 SAS 的日期函数和 PRX 更直观。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(lubridate)
+library(stringr)
+
+# 日期解析与运算：ISO 8601 字符串 -> Date
+d <- ymd("2024-06-01")
+d + days(30)          # 2024-07-01
+year(d)               # 2024
+month(d)              # 6
+interval(ymd("2024-01-01"), d) / dyears(1)   # 距年初的年数
+
+# 字符串检测：筛选 AE 术语（AETERM）含 "head" 的记录
+ae <- c("Headache", "head rash", "Nausea")
+str_detect(ae, "Head")                        # 大小写敏感：只命中大写开头
+str_detect(ae, regex("head", ignore_case = TRUE))   # 忽略大小写：两者都命中</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+[1] "2024-07-01"
+[1] 2024
+[1] 6
+[1] 0.4161533
+[1]  TRUE FALSE FALSE
+[1]  TRUE  TRUE FALSE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">ymd("2024-06-01")</code> 按"年-月-日"把字符串解析成 Date；<code class="inl">d + days(30)</code> 直接加 30 天得 7 月 1 日，比 SAS 的整数日期加减可读得多。</li>
+<li><code class="inl">year()</code>/<code class="inl">month()</code> 抽取日期成分；<code class="inl">interval(a, b) / dyears(1)</code> 算出两日期相隔多少年（0.416…），是派生"随访年数""暴露时长"的常用手法。</li>
+<li><code class="inl">str_detect(ae, "Head")</code> 大小写敏感，只命中 "Headache"（TRUE FALSE FALSE）；换成 <code class="inl">regex("head", ignore_case=TRUE)</code> 后 "Headache" 和 "head rash" 都命中（TRUE TRUE FALSE）。这在 AE 术语按关键词归类时非常实用。</li>
+</ol></div>
+<p>stringr 与 SAS PRX（Perl 正则）的差异，记住这三点即可平滑过渡：</p>
+<table>
+<tr><th>维度</th><th>R / stringr</th><th>SAS PRX</th></tr>
+<tr><td>正则方言</td><td>基于 ICU（stringi 引擎）</td><td>基于 Perl 正则（PRXPARSE）</td></tr>
+<tr><td>反斜杠转义</td><td>双引号串里要写两个 <code class="inl">"\\d"</code> 才表示 <code class="inl">\d</code></td><td>单引号串里 <code class="inl">'\d'</code> 直接可用</td></tr>
+<tr><td>大小写开关</td><td><code class="inl">regex(..., ignore_case=TRUE)</code> 显式参数</td><td>模式里加 <code class="inl">/i</code> 修饰符</td></tr>
+<tr><td>常用动词</td><td><code class="inl">str_detect / str_extract / str_replace</code> 一致命名</td><td><code class="inl">PRXMATCH / PRXPOSN / PRXCHANGE</code> 各写各的</td></tr>
+</table>
+
+<h2 id="s1-9">1.9 十大陷阱汇总</h2>
+<p>把 SAS 用户最容易踩的十个 R 陷阱集中列出，出问题时先回这张表对照：</p>
+<table>
+<tr><th>#</th><th>陷阱</th><th>说明与避坑</th></tr>
+<tr><td>1</td><td><code class="inl">=</code> 与 <code class="inl">==</code></td><td>R 里 <code class="inl">=</code> 主要用于函数参数赋值，比较必须用 <code class="inl">==</code>；赋值习惯用 <code class="inl">&lt;-</code>。把 <code class="inl">if (x = 1)</code> 当比较会直接报错或误赋值。</td></tr>
+<tr><td>2</td><td>分号可选</td><td>R 语句换行即结束，不需要 SAS 那样每条都加分号；分号可写但非必需，一行多语句才用。</td></tr>
+<tr><td>3</td><td>1-based 相同，但 NA 传播</td><td>索引都从 1 开始（同 SAS 数组），别被 Python 的 0 带偏；但 R 的 NA 会在运算里传播，SAS 的 <code class="inl">.</code> 常被当 0，聚合前务必 <code class="inl">na.rm</code> 或先处理缺失。</td></tr>
+<tr><td>4</td><td>factor 转数值</td><td><code class="inl">as.integer(factor)</code> 返回层级下标而非原值；取回原数值用 <code class="inl">as.numeric(as.character(f))</code>。</td></tr>
+<tr><td>5</td><td>字符串比较受 locale</td><td>排序/比较结果受 <code class="inl">LC_COLLATE</code> 影响，跨机器或递交环境可能不同；关键排序显式设定 locale 或 levels，别依赖默认。</td></tr>
+<tr><td>6</td><td>向量回收</td><td>长度不等时短向量静默循环补齐，非整除只警告不报错。看到回收警告一律当数据 integrity 事件追查。</td></tr>
+<tr><td>7</td><td><code class="inl">$</code> 的部分匹配</td><td>data.frame 的 <code class="inl">df$AGE</code> 会部分匹配唯一前缀（可能命中 <code class="inl">AGECAT</code>），埋隐患；用 <code class="inl">df[["AGE"]]</code> 精确取，或改用 tibble（默认禁止部分匹配并报错）。</td></tr>
+<tr><td>8</td><td>print 与自动打印</td><td>交互式顶层表达式会自动打印，但在函数内、赋值后或用 Rscript 批跑时不会；需要看结果就显式 <code class="inl">print()</code>。</td></tr>
+<tr><td>9</td><td>对象复制语义</td><td>R 是"写时复制"的值语义：<code class="inl">y &lt;- x</code> 后修改 y 不影响 x。别用 SAS"直接改原数据集"的心智，改动要么赋回、要么用管道产出新对象。</td></tr>
+<tr><td>10</td><td><code class="inl">library()</code> 与 <code class="inl">::</code></td><td><code class="inl">library(pkg)</code> 附加整个命名空间，可能掩盖同名函数（如 dplyr 的 filter 掩盖 stats::filter）；对易冲突的函数用 <code class="inl">pkg::fun()</code> 精确调用更安全、可读性也更好。</td></tr>
+</table>
+
+<h2 id="s1-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://r4ds.hadley.nz">R for Data Science (2e)</a> — 主线教材，向量/数据框/tidyverse 讲得最清楚，免费在线，配合本章食用 <span class="tag">入门</span></li>
+<li><a href="https://adv-r.hadley.nz">Advanced R</a> — 想搞懂强制类型、作用域、回收的底层机制时读它，SAS 老手进阶必读 <span class="tag">进阶</span></li>
+<li><a href="http://r4stats.com">r4stats</a> — 专门写给 SAS/SPSS 用户的 R 对照教程，逐条翻译你的既有直觉 <span class="tag">参考</span></li>
+<li><a href="http://sas-and-r.blogspot.com">SAS and R 博客</a> — 同一任务 SAS 与 R 双解法的经典博客，遇到"这个 SAS 怎么写成 R"先来搜 <span class="tag">参考</span></li>
+<li><a href="https://posit.co/resources/cheatsheets/">Posit Cheatsheets</a> — dplyr/tidyr/stringr/lubridate 速查表，打印贴墙随时对照 <span class="tag">参考</span></li>
+</ul>
+</section>
+
+<h2 id="s1-ex">本章练习</h2>
+<ol>
+<li>（易）构造 <code class="inl">c(1, "2", TRUE)</code>，用 <code class="inl">typeof()</code> 和 <code class="inl">is.*</code> 族确认它的类型，并解释为什么。</li>
+<li>（中）用 1.6 的迷你 ADSL，分别以 base、dplyr、data.table 三种写法算出"各 ARM 组的 AGE 中位数"，核对三者结果一致。</li>
+<li>（难）写一个向量化函数 <code class="inl">derive_avisit(brth, ref)</code>，用 lubridate 返回受试者在参考日的周岁与"距上次访视天数"，并对含 NA 的日期列验证 NA 传播行为符合预期。</li>
+</ol>
+<p class="lede">下一章：把这些语言基础落到 CDISC 语境——SDTM 与 ADaM 的数据管理、派生与双编程核对。</p>
+</article></main>
+<aside class="toc">
+<a href="#s1-1">1.1 向量与强制类型</a>
+<a href="#s1-2">1.2 factor 有序类别</a>
+<a href="#s1-3">1.3 NA 的语义与传播</a>
+<a href="#s1-4">1.4 索引与向量回收</a>
+<a href="#s1-5">1.5 data.frame 与 tibble</a>
+<a href="#s1-6">1.6 三范式同做一件事</a>
+<a href="#s1-7">1.7 函数与管道</a>
+<a href="#s1-8">1.8 日期与字符串</a>
+<a href="#s1-9">1.9 十大陷阱汇总</a>
+<a href="#s1-res">章末资源</a>
+<a href="#s1-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

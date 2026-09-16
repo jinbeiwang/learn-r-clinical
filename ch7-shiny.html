@@ -1,0 +1,311 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 7 章 Shiny 与交互：从脚本到应用 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a class="on" href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 7 章</div>
+<div class="chapnum">07</div>
+<h1>Shiny 与交互：从脚本到应用</h1>
+<p class="lede">SAS 程序是"跑完就结束"的一次性批处理；Shiny 应用是"活着等用户操作"的常驻服务。这一章带你把多年积累的 SAS 分析脚本，第一次包装成能点、能选、能实时刷新的交互工具——从心智模型到部署，再到 GxP 环境下绕不开的验证与合规问题。</p>
+
+<h2 id="s7-1">7.1 心智模型：reactive 依赖图 vs SAS 批处理</h2>
+<p>在写第一行 Shiny 代码前，请先换一套脑子。SAS 的世界里，一个 DATA step 或 PROC 从头跑到尾，读入数据、算完、写出结果、结束——它是<strong>无状态的一次性脚本</strong>。Shiny 完全不同：应用启动后会一直挂在内存里，界面上每个控件的每次变化，都会沿着一张<strong>响应式依赖图（reactive graph）</strong>向下游传播，只重算真正受影响的那部分。</p>
+<p>把下面这组对照记在心里，本章后面所有代码都是它的展开：</p>
+<ul>
+<li><strong>无状态脚本 → 响应式依赖图</strong>：SAS 是"从上到下一条流水线跑完即销毁"；Shiny 是"节点之间连成一张图，输入变了就顺着边自动重算，算完的结果被缓存复用"。</li>
+<li><strong>输入 = widget（控件）</strong>：SAS 里你靠改代码或宏参数 <code class="inl">%let arm=X</code> 来"输入"；Shiny 里用户在浏览器点一个下拉框、拖一个滑块，就是一个 <code class="inl">input$xxx</code>，它天生是响应式的。</li>
+<li><strong>输出 = render* 函数</strong>：SAS 靠 <code class="inl">PROC PRINT</code> / ODS 把结果写死到 listing；Shiny 靠 <code class="inl">renderTable()</code> / <code class="inl">renderPlot()</code> 等把结果"绑"到界面上的一个占位符，源数据一变，输出自动刷新。</li>
+<li><strong>惰性 vs 急切</strong>：SAS 语句写一行执行一行；Shiny 的 <code class="inl">reactive()</code> 是<strong>惰性</strong>的——没有人向它要值，它就绝不重算，这正是性能与正确性的关键（7.3 详谈）。</li>
+</ul>
+<div class="note">一句话锚点：<em>SAS 程序是"函数被调用一次"；Shiny 应用是"一堆函数被一张图反复、按需地调用"。</em>你要管理的不再是执行顺序，而是"谁依赖谁"。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>把 server 函数当成一段从头到尾顺序执行的脚本。server 函数在应用启动时<strong>只运行一次</strong>，它内部的 <code class="inl">reactive()</code> / <code class="inl">observeEvent()</code> 只是"注册"了一条规则，之后由 Shiny 引擎在合适的时机替你反复触发——不是你写一行它就跑一行。</div>
+
+<h2 id="s7-2">7.2 最小 app：一个下拉框过滤受试者</h2>
+<p>我们从能跑的最小闭环开始：界面提供一个治疗组下拉框（<code class="inl">selectInput</code>），下方一张表（<code class="inl">tableOutput</code>）；用户选组，表格实时过滤。数据用本书一贯的临床示例数据 <code class="inl">pharmaversesdtm::dm</code>（SDTM 人口学域，含 ARM/AGE/SEX）。</p>
+<div class="note">说明：本章示例数据用的是 <code class="inl">pharmaversesdtm</code> 提供的 <strong>SDTM <code class="inl">dm</code></strong> 数据集（306 行），而非 ADaM 的 <code class="inl">adsl</code>——当前环境装的是 SDTM 包，没有 ADaM 层。<code class="inl">dm</code> 与 <code class="inl">adsl</code> 同为受试者级、都带 ARM，用来教交互过滤完全够用；换成你司的 adsl 只需改数据源与变量名。</div>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(shiny)
+data("dm", package = "pharmaversesdtm")
+
+# ---- ui：界面 = 输入控件 + 输出占位符 ----
+ui <- fluidPage(
+  selectInput("arm", "选择治疗组 (ARM)",
+              choices = c("全部" = "ALL", unique(dm$ARM))),
+  tableOutput("tbl")
+)
+
+# ---- server：逻辑 = reactive 过滤 + renderTable 绑定 ----
+server <- function(input, output, session) {
+  filtered <- reactive({                 # 惰性：只有 tbl 要值时才重算
+    d <- dm
+    if (input$arm != "ALL") d <- d[d$ARM == input$arm, , drop = FALSE]
+    d[, c("USUBJID", "AGE", "SEX", "ARM")]
+  })
+  output$tbl <- renderTable({ head(filtered(), 10) })
+}
+
+app <- shinyApp(ui = ui, server = server)   # 组装成可运行对象</code></pre>
+<p>Shiny 应用无法在批处理里"启动服务器并展示界面"，所以本书的验证方式是<strong>构造验证</strong>：把代码 source 进来，确认 <code class="inl">ui</code> / <code class="inl">server</code> / <code class="inl">app</code> 三个对象类型正确、依赖图能装配成功。下面是 R 4.5.0 的真实捕获：</p>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，构造验证）
+class(ui)    : shiny.tag.list list 
+class(server): function 
+class(app)   : shiny.appobj 
+choices ARM  : ALL | Placebo | Xanomeline High Dose | Xanomeline Low Dose | Screen Failure</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">ui</code> 的 class 是 <code class="inl">shiny.tag.list</code>——说明 <code class="inl">fluidPage()</code> 把控件正确组装成了一棵 HTML 标签树；<code class="inl">selectInput</code> 的第一个参数 <code class="inl">"arm"</code> 就是稍后 <code class="inl">input$arm</code> 的名字。</li>
+<li><code class="inl">server</code> 是一个普通 <code class="inl">function</code>，签名固定为 <code class="inl">function(input, output, session)</code>；Shiny 启动时对每个用户会话调用它一次。</li>
+<li><code class="inl">app</code> 的 class 是 <code class="inl">shiny.appobj</code>——这是 <code class="inl">shinyApp()</code> 把 ui 和 server 焊接后的可运行对象，构造成功即代表依赖图无装配错误。</li>
+<li><code class="inl">choices</code> 那行证明数据真的读进来了、ARM 有 4 个水平外加"全部"，下拉框不会是空的。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>在 <code class="inl">reactive()</code> 外面直接写 <code class="inl">d <- dm[dm$ARM == input$arm, ]</code>。那样只在 server 启动那一瞬执行一次，此时 <code class="inl">input$arm</code> 往往还没就绪，且之后永不更新。<strong>凡是依赖 input 的计算，必须包进 <code class="inl">reactive()</code> 或 <code class="inl">render*()</code> 里</strong>，才能挂上依赖图。</div>
+<p><strong>怎么真正跑起来看界面？</strong>把上面代码存成一个目录里的 <code class="inl">app.R</code>，然后在 R 控制台执行：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 交互式运行（会占用当前 R 会话，浏览器自动弹出）
+shiny::runApp("app.R")
+
+# 或在 RStudio 里打开 app.R，点右上角 "Run App"
+# 停止服务：控制台按 Esc，或浏览器关标签页后回 R 里 Ctrl+C</code></pre>
+
+<h2 id="s7-3">7.3 三件套对照：reactive / reactiveVal / observeEvent</h2>
+<p>Shiny 的响应式世界由三个基本积木构成。分不清它们是新手最常见的坑，用这张表一次锁死：</p>
+<table>
+<tr><th>积木</th><th>返回值</th><th>副作用</th><th>触发时机</th><th>典型用途</th></tr>
+<tr><td><code class="inl">reactive({ ... })</code></td><td>有——像函数一样被下游 <code class="inl">()</code> 取值</td><td>无（纯计算）</td><td><strong>惰性</strong>：有人向它要值且依赖变了才重算</td><td>过滤后的数据、派生计算，多处共享且缓存</td></tr>
+<tr><td><code class="inl">reactiveVal(x)</code></td><td>有——读 <code class="inl">v()</code>，写 <code class="inl">v(new)</code></td><td>无</td><td>被写入时，使所有读它的下游失效</td><td>需要跨事件手动改的可变状态（计数器、开关）</td></tr>
+<tr><td><code class="inl">observeEvent(trigger, { ... })</code></td><td>无——不返回值给下游</td><td><strong>有</strong>：执行动作</td><td><strong>急切</strong>：trigger 一变立即运行</td><td>点按钮时写状态、弹提示、写日志、下载</td></tr>
+</table>
+<p>一句话记忆：<strong>reactive 负责"算出值供人用"，observeEvent 负责"做一件事"，reactiveVal 是二者之间传递状态的可变盒子。</strong></p>
+<pre class="code" style="white-space:pre"><code class="lang-r">server <- function(input, output, session) {
+  doubled   <- reactive({ input$x * 2 })          # ① 有返回值，惰性纯计算
+  snapshot  <- reactiveVal(NULL)                   # ② 可变状态盒子
+  observeEvent(input$go, { snapshot(doubled()) })  # ③ 副作用：点按钮才落盘
+  output$show <- renderPrint({
+    list(live_doubled = doubled(), snapshot = snapshot())
+  })
+}</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，构造验证）
+class(app): shiny.appobj 
+reactive 是函数吗: TRUE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">doubled</code> 随 <code class="inl">input$x</code> 实时变化——它是<strong>活的</strong>：输入框一改，任何读 <code class="inl">doubled()</code> 的地方立刻拿到新值。</li>
+<li><code class="inl">snapshot</code> 初值 <code class="inl">NULL</code>，只有点"记录"按钮才被 <code class="inl">observeEvent</code> 写入当前的 doubled 值——它是<strong>被冻结的历史值</strong>，不随输入框实时变。</li>
+<li>界面上因此同时显示两个数：<code class="inl">live_doubled</code>（实时）与 <code class="inl">snapshot</code>（点按钮那一刻的快照）。这个对比能让你彻底体会 reactive 的"惰性实时"与 observeEvent 的"事件触发"之别。</li>
+<li><code class="inl">is.reactive()</code> 返回 TRUE，印证 reactive 对象本质是一个可被调用的响应式函数。</li>
+</ol></div>
+
+<h2 id="s7-4">7.4 modules：用命名空间造可复用组件</h2>
+<p>当 app 变大，把一块 UI + 一段 server 逻辑打包成<strong>模块（module）</strong>，就能像 SAS 宏一样复用，还能在同一个 app 里放多个互不干扰的实例。现代写法是 <code class="inl">NS()</code>（命名空间）+ <code class="inl">moduleServer()</code>。下面是一个经典计数器模块，我们在一个页面里放两份，验证它们的状态彼此独立。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(shiny)
+
+# ---- 模块 UI：所有 id 都要过 NS() 命名空间 ----
+counterUI <- function(id) {
+  ns <- NS(id)
+  tagList(
+    actionButton(ns("plus"), "+1"),
+    textOutput(ns("count"))
+  )
+}
+
+# ---- 模块 Server：moduleServer 封装命名空间 ----
+counterServer <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    n <- reactiveVal(0)
+    observeEvent(input$plus, { n(n() + 1) })
+    output$count <- renderText({ paste("当前计数:", n()) })
+    reactive({ n() })          # 把内部状态暴露给父级（可选）
+  })
+}
+
+ui <- fluidPage(counterUI("a"), counterUI("b"))
+server <- function(input, output, session) {
+  counterServer("a")           # 两个实例，各自的 n 互不影响
+  counterServer("b")
+}
+app <- shinyApp(ui = ui, server = server)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，构造验证）
+class(counterUI)     : function 
+class(counterServer) : function 
+class(ui)            : shiny.tag.list list 
+class(app)           : shiny.appobj 
+NS 命名空间示例: NS('a')('plus') => a-plus</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">ns <- NS(id)</code> 生成一个"加前缀"的函数：<code class="inl">ns("plus")</code> 实际渲染成 <code class="inl">a-plus</code>（见输出末行）。这就是命名空间——两个实例的按钮 id 分别是 <code class="inl">a-plus</code> 和 <code class="inl">b-plus</code>，绝不撞车。</li>
+<li><code class="inl">moduleServer(id, function(input, output, session){...})</code>：模块内部照常写 <code class="inl">input$plus</code>，Shiny 自动帮你补上命名空间前缀，你无需在模块里手动拼 id。</li>
+<li>UI 端和 Server 端<strong>必须用同一个 id</strong>（这里都是 <code class="inl">"a"</code> / <code class="inl">"b"</code>），否则命名空间对不上，控件点了没反应——这是模块最常见的 bug。</li>
+<li><code class="inl">counterServer</code> 末尾 <code class="inl">return(reactive({ n() }))</code> 让父级能读到子模块的状态，实现模块间通信。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>把模块当成 SAS 宏那样"文本展开、共享全局变量"。模块之间是<strong>隔离的响应式作用域</strong>，实例 a 的 <code class="inl">n</code> 和实例 b 的 <code class="inl">n</code> 是两个独立对象，不存在全局命名冲突，也不能像宏变量那样互相直接引用——要通信必须通过返回值或共享的 reactiveVal。</div>
+
+<h2 id="s7-5">7.5 DT 与 plotly：让表格和图都能交互</h2>
+<p>临床数据探索离不开一张能排序、能搜索、能分页的大表，和一张能悬停看数值、能缩放的图。<code class="inl">DT</code> 和 <code class="inl">plotly</code> 就是干这个的两个 htmlwidget 包。</p>
+<ul>
+<li><strong>DT</strong>：<code class="inl">DT::renderDataTable(expr, server = TRUE)</code> 里的 <code class="inl">server = TRUE</code> 是<strong>一句话关键</strong>——把排序/搜索/分页交给 R 服务端逐次处理，而不是一次性把整表塞进浏览器。几万行受试者数据必须用 <code class="inl">server = TRUE</code>，否则页面会卡死。</li>
+<li><strong>plotly</strong>：<code class="inl">plotly::renderPlotly()</code> 配 <code class="inl">ggplotly()</code>，可以把一张静态 ggplot（这里概念上是一张 KM 生存曲线）瞬间变成可悬停、可缩放、可点图例隐藏分组的交互图。</li>
+</ul>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(shiny); library(DT); library(plotly)
+library(survival); library(survminer)
+data("dm", package = "pharmaversesdtm")
+
+ui <- fluidPage(
+  DT::dataTableOutput("tbl"),
+  plotly::plotlyOutput("km")
+)
+
+server <- function(input, output, session) {
+  # DT：server=TRUE 把大数据的分页/搜索放在服务端
+  output$tbl <- DT::renderDataTable({
+    DT::datatable(dm[, c("USUBJID", "AGE", "SEX", "ARM")],
+                  options = list(pageLength = 5))
+  }, server = TRUE)
+
+  # plotly：把 ggplot 的 KM 曲线概念转成交互图
+  output$km <- plotly::renderPlotly({
+    fit <- survfit(Surv(time, status) ~ sex, data = lung)
+    p   <- ggsurvplot(fit, data = lung, pval = TRUE)
+    ggplotly(p$plot)               # 注意取 $plot，而非整个 ggsurvplot 对象
+  })
+}
+app <- shinyApp(ui = ui, server = server)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，构造验证）
+class(app)           : shiny.appobj 
+class(datatable)     : datatables htmlwidget 
+class(ggplotly(km))  : plotly htmlwidget</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">DT::datatable()</code> 的 class 是 <code class="inl">datatables htmlwidget</code>，说明它构造出了一个交互表控件；<code class="inl">pageLength = 5</code> 控制每页行数。</li>
+<li><code class="inl">ggsurvplot()</code> 返回的是一个<strong>复合列表</strong>（含曲线、风险表、p 值），<code class="inl">ggplotly()</code> 只吃其中的 ggplot，所以必须写 <code class="inl">p$plot</code>；直接丢 <code class="inl">p</code> 会报错。</li>
+<li><code class="inl">ggplotly()</code> 的 class 是 <code class="inl">plotly htmlwidget</code>——静态图成功升级为交互图，构造验证通过。</li>
+<li>这里用 <code class="inl">survival::lung</code> 演示 KM 概念；实战中把它换成你的 ADSL/ADTTE 时间-事件数据即可，交互骨架不变。</li>
+</ol></div>
+
+<h2 id="s7-6">7.6 teal：临床探索应用的现成框架</h2>
+<p>从零搭一个带筛选面板、代码可追溯、可导出报告的临床探索 app 很费工。<code class="inl">teal</code>（pharmaverse 生态）就是为此而生：它把"数据 + 过滤器 + 分析模块"标准化，你用 <code class="inl">teal::init()</code> 组装即可。下面的例子把 <code class="inl">dm</code> 塞进 <code class="inl">teal_data</code>，挂一个示例模块，构造出完整 teal app。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(teal)
+data("dm", package = "pharmaversesdtm")
+
+td <- teal_data(dm = dm)                    # teal 的数据容器（带代码追溯）
+app <- teal::init(
+  data = td,
+  modules = modules(
+    teal::example_module(label = "示例模块", datanames = "dm")
+  )
+)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，构造验证）
+class(td)  : teal_data 
+datanames  : dm 
+class(app) : teal_app list</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">teal_data(dm = dm)</code> 的 class 是 <code class="inl">teal_data</code>——它不只是个 list，还会记录"这些数据是由哪段代码产生的"，为可追溯与复现服务。</li>
+<li><code class="inl">names(td)</code> 得到 <code class="inl">dm</code>，这就是模块里 <code class="inl">datanames = "dm"</code> 引用的键名，二者必须对得上。</li>
+<li><code class="inl">teal::init()</code> 返回的 class 是 <code class="inl">teal_app</code>（同时是 list）——它本质仍是一个 Shiny app 对象，可以直接 <code class="inl">shiny::runApp(app)</code> 运行。</li>
+</ol></div>
+<p><strong>teal.slice（筛选器面板）概念：</strong>teal 左侧那一列数据过滤器由 <code class="inl">teal.slice</code> 包驱动。用户在浏览器里拖滑块、选水平来筛 <code class="inl">dm</code>，这些切片状态可以被保存、分享、复现——相当于把 SAS 里手写的一堆 <code class="inl">where</code> 条件变成了可视、可版本化的对象。</p>
+<p><strong>临床模块扩展：</strong>真正的分析模块在 <code class="inl">teal.modules.clinical</code> 里——它提供符合临床报告习惯的现成模块（如受试者处置、不良事件、实验室Shift 图等）。把 <code class="inl">example_module()</code> 换成其中某个模块，就得到一个可直接给医学审阅用的探索工具。详见 <a href="https://pharmaverse.github.io/teal.modules.clinical/">teal.modules.clinical 文档</a>。</p>
+
+<h2 id="s7-7">7.7 部署：把 app 送到别人能打开的地方</h2>
+<p>本地 <code class="inl">runApp()</code> 只有自己看得到。要让同事在浏览器里打开，最快的路是 <strong>shinyapps.io</strong>（Posit 托管的免费/付费云）。四步走：</p>
+<ol>
+<li><strong>装 rsconnect</strong>：<code class="inl">install.packages("rsconnect")</code> ——这是负责打包上传的客户端包。</li>
+<li><strong>授权账号</strong>：在 shinyapps.io 网站后台复制一段 token，粘进 <code class="inl">rsconnect::setAccountInfo(...)</code>，把本机与该账号绑定（一次性）。</li>
+<li><strong>部署</strong>：<code class="inl">rsconnect::deployApp("app_dir")</code> ——它扫描依赖、打包、上传、在云端重建环境。</li>
+<li><strong>拿 URL</strong>：部署成功后控制台打印一个 <code class="inl">https://&lt;账号&gt;.shinyapps.io/&lt;app名&gt;/</code> 的公开链接，发给同事即可访问。</li>
+</ol>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 示例（不要真跑——需要你自己的 shinyapps.io 账号与 token）
+install.packages("rsconnect")
+
+library(rsconnect)
+rsconnect::setAccountInfo(
+  name   = "your_account",
+  token  = "&lt;从 shinyapps.io 后台复制&gt;",
+  secret = "&lt;从 shinyapps.io 后台复制&gt;"
+)
+
+rsconnect::deployApp("path/to/app_dir")   # 上传并返回访问 URL</code></pre>
+<div class="note"><strong>企业级方案 Posit Connect：</strong>受监管环境里通常不会用公网的 shinyapps.io，而是自建 <strong>Posit Connect</strong> 服务器——它在企业内网托管 Shiny/Quarto，支持访问权限控制、环境锁（renv）、集中日志与审计，是 GxP 场景下更现实的部署载体。部署 API 与 rsconnect 基本一致。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>以为云端会"自动装好我本地的所有包"。<code class="inl">deployApp()</code> 会尝试解析依赖，但版本可能与本地不一致导致行为漂移。务必用 <code class="inl">renv</code>（第 0 章）锁定包版本，并在部署配置里声明 R 版本，否则云端复现结果和你本地对不上——这在验证语境下是硬伤。</div>
+
+<h2 id="s7-8">7.8 GxP 考量：交互应用的验证与合规</h2>
+<p>Shiny app 一旦触及 GxP 数据或决策，就不再是"写个工具给同事玩玩"，而要接受与 SAS 程序同等的验证纪律，甚至更严——因为它是<strong>常驻、有状态、可被反复操作</strong>的服务。</p>
+<p><strong>FDA 21 CFR Part 11（电子记录与电子签名）核心概念：</strong></p>
+<ul>
+<li><strong>审计轨迹（Audit Trail）</strong>：谁、在什么时间、把哪个输入从 A 改成了 B、看到了什么输出——必须被系统安全、带时间戳地记录且不可篡改。原生 Shiny 不带审计轨迹，需你自己在 server 里对关键操作写日志（配合 <code class="inl">logger</code> 落盘）。</li>
+<li><strong>电子签名（e-Signature）</strong>：若 app 承载"审阅批准"动作，签名必须唯一绑定到个人、含签名时间/含义，且不可被复制或伪造——通常需要接入企业身份系统而非在 app 里自造。</li>
+</ul>
+<p><strong>验证策略（把 SAS 的 CSV 心智平移过来）：</strong></p>
+<table>
+<tr><th>验证维度</th><th>做法</th><th>对应 SAS 世界</th></tr>
+<tr><td>输入边界测试</td><td>用 <code class="inl">shinytest2</code> 模拟极端输入：空选择、超范围滑块、非法字符，断言 app 不崩且给出正确提示</td><td>宏参数的边界与异常处理测试</td></tr>
+<tr><td>输出快照测试</td><td>固定输入下对表格/图做快照（screenshot / 数据结构），版本迭代时比对，防回归</td><td>PROC COMPARE 比对基线输出</td></tr>
+<tr><td>版本锁定</td><td>renv 锁包版本 + Git 锁代码 + 镜像锁 R 版本，三者构成可复现证据链</td><td>冻结 SAS 版本与宏库</td></tr>
+</table>
+<div class="note">验证的落点仍是"包 + 测试 + 锁环境"（见第 0/5 章）。把 app 的核心逻辑抽成<strong>纯函数 + 模块</strong>（第 6 章的包开发思路），就能对这些纯函数写 testthat 单元测试——响应式外壳难测，纯计算内核好测，这是让 Shiny 可验证的关键架构决策。</div>
+<div class="pitfall"><strong>SAS 误区 / 定位澄清：</strong>别把 Shiny app 当成<strong>递交产物（submission deliverable）的默认载体</strong>。监管机构要的是可复现的静态 listing、数据集与分析报告（第 4 章的 rtables/Quarto 输出）。Shiny/teal 的合理定位是<strong>探索与审阅工具</strong>——帮医学、统计、DM 团队交互式地看数据、查一致性、做敏感性分析。真正进 eCTD 的，仍应是从同一套锁定代码生成的静态产物；交互 app 是它们旁边的"驾驶舱"，不是递交物本身。</div>
+
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：<code class="inl">reactive()</code> 与 <code class="inl">observeEvent()</code> 的核心区别是什么？</p>
+<button class="quiz-opt" data-opt="A">两者完全等价，只是名字不同</button>
+<button class="quiz-opt" data-opt="B">reactive() 返回值供下游消费（惰性、纯计算）；observeEvent() 执行副作用、不返回值（急切、事件触发）</button>
+<button class="quiz-opt" data-opt="C">reactive() 只能放在 ui 里，observeEvent() 只能放在 server 里</button>
+<button class="quiz-opt" data-opt="D">observeEvent() 会缓存结果，reactive() 每次都从头重算</button>
+<div class="quiz-exp">选 B。<code class="inl">reactive()</code> 是惰性纯计算，像函数一样被下游 <code class="inl">()</code> 取值并缓存；<code class="inl">observeEvent()</code> 不返回值给下游，而是在触发条件满足时急切地"做一件事"（写状态、弹提示、写日志）。D 恰好说反了——缓存是 reactive 的特性。二者都在 server 里，C 错。</div>
+</div>
+
+<h2 id="s7-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://mastering-shiny.org">Mastering Shiny（Hadley Wickham）</a> — 入门主线，反应式编程与模块讲得最透，免费在线 <span class="tag">入门</span></li>
+<li><a href="https://shiny.posit.co">Shiny 官网（Posit）</a> — 参考文档、控件速查、示例图库与教程入口 <span class="tag">参考</span></li>
+<li><a href="https://pharmaverse.github.io/teal/">teal（pharmaverse）</a> — 临床探索应用框架，进阶；配 teal.modules.clinical 出临床模块 <span class="tag">进阶</span></li>
+<li><a href="https://rstudio.github.io/DT/">DT 文档</a> — 交互表格控件参考，server 模式与回调 API <span class="tag">参考</span></li>
+<li>本地精读：<a href="../clinical-viz-improved">../clinical-viz-improved</a> — 临床可视化改进示例，参考 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s7-ex">本章练习</h2>
+<ol>
+<li>（易）给 7.2 的最小 app 再加一个 <code class="inl">numericInput</code> / <code class="inl">sliderInput</code>，按 <code class="inl">AGE</code> 下限过滤受试者：在 <code class="inl">filtered</code> 这个 reactive 里加一句 <code class="inl">d <- d[d$AGE >= input$minage, ]</code>，观察表格随滑块实时刷新。</li>
+<li>（中）把 7.2 的 <code class="inl">tableOutput</code> + <code class="inl">renderTable</code> 换成 <code class="inl">DT::dataTableOutput</code> + <code class="inl">DT::renderDataTable(..., server = TRUE)</code>；再加一个 <code class="inl">downloadButton</code> + <code class="inl">downloadHandler</code>，把当前过滤后的表导出成 CSV。</li>
+<li>（难）把 7.2 里"选治疗组 + 过滤"的逻辑抽成一个模块 <code class="inl">adsl_filter_module</code>（UI 端 <code class="inl">NS()</code>、server 端 <code class="inl">moduleServer()</code>，返回一个 reactive 的过滤后数据），在主 app 里像 7.4 的计数器那样调用它，体会封装与复用。</li>
+</ol>
+<p class="lede">下一章：走出代码本身，走进社区与职业——去哪里提问、跟谁学、如何把 SAS 背景变成 R 世界的独特优势。</p>
+</article></main>
+<aside class="toc">
+<a href="#s7-1">7.1 reactive 图 vs 批处理</a>
+<a href="#s7-2">7.2 最小 app</a>
+<a href="#s7-3">7.3 响应式三件套</a>
+<a href="#s7-4">7.4 modules 模块化</a>
+<a href="#s7-5">7.5 DT 与 plotly</a>
+<a href="#s7-6">7.6 teal 框架</a>
+<a href="#s7-7">7.7 部署</a>
+<a href="#s7-8">7.8 GxP 考量</a>
+<a href="#s7-res">章末资源</a>
+<a href="#s7-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

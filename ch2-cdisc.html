@@ -1,0 +1,418 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 2 章 数据管理与 CDISC · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a class="on" href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 2 章</div>
+<div class="chapnum">02</div>
+<h1>数据管理与 CDISC：SDTM/ADaM 的 R 实现</h1>
+<p class="lede">你对 CDISC 的理解已经胜过 R 生态里的大多数人，缺的只是一种 R 的表达方式。本章把 SDTM/ADaM 逐项搬进 R 世界：pharmaversesdtm 给数据，admiral 做衍生，metacore 管 spec，diffdf 做双编程。</p>
+
+<h2 id="s2-1">2.1 数据三源：练习数据从哪来</h2>
+<p>SAS 里你练手用的是 CDISC Pilot 那套永久库；R 世界没有 libname，练习数据以<strong>包</strong>的形式分发——装包即建库，加载即 SET。三个最常用的来源：</p>
+<ul>
+<li><strong>pharmaversesdtm</strong>：pharmaverse 家族自带的合成 SDTM 数据集（基于 CDISC Pilot 研究，正是你熟悉的那份数据），含 dm、ae、ex、vs、lb 等 60 余个域，是本书的默认练习数据。</li>
+<li><strong>scda</strong>（Synthetic CDISC Datasets for Application，insightsengineering/Roche 出品，见 <a href="https://github.com/insightsengineering/scda">GitHub 仓库</a>）：按年度归档的合成 SDTM + ADaM 成套数据，例如装 <code class="inl">scda2022</code> 后用 <code class="inl">scda2022::get_data("dm")</code> 取数。年度归档 + 版本固定，适合企业做回归测试与验证，概念上相当于"每年冻结一版的标准测试库"。</li>
+<li><strong>synadam</strong>：CRAN 上的合成 ADaM 数据包，包内 <code class="inl">extdata/</code> 直接带 adsl.csv、adae.csv、adlb.csv，配合 admiral 的 <code class="inl">use_adam()</code> 工作流使用。</li>
+</ul>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(pharmaversesdtm)
+library(dplyr, warn.conflicts = FALSE)
+
+# 包内自带合成 SDTM 数据（基于 CDISC Pilot 研究）
+data(dm, package = "pharmaversesdtm")   # 等价于 dm &lt;- pharmaversesdtm::dm
+
+cat("dim:", dim(dm), "\n")              # 行 x 列
+glimpse(dm[, c("USUBJID", "ARM", "SEX", "AGE", "BRTHDTC", "RFXSTDTC")])</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+dim: 306 28 
+Rows: 306
+Columns: 6
+$ USUBJID  &lt;chr&gt; "01-701-1015", "01-701-1023", "01-701-1028", "01-701-1033", "…
+$ ARM      &lt;chr&gt; "Placebo", "Placebo", "Xanomeline High Dose", "Xanomeline Low…
+$ SEX      &lt;chr&gt; "F", "M", "M", "M", "F", "F", "F", "M", "F", "M", "M", "M", "…
+$ AGE      &lt;dbl&gt; 63, 64, 71, 74, 77, 85, 59, 68, 81, 84, 52, 84, 81, 57, 75, 5…
+$ BRTHDTC  &lt;chr&gt; "1950-12-26", "1948-07-22", "1942-07-11", "1940-03-10", "1937…
+$ RFXSTDTC &lt;chr&gt; "2014-01-02", "2012-08-05", "2013-07-19", "2014-03-18", "2014…</pre>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(synadam)
+
+# synadam 的合成 ADaM 以 CSV 形式放在包内 extdata/
+adsl_path &lt;- system.file("extdata", "adsl.csv", package = "synadam")
+adsl_syn  &lt;- read.csv(adsl_path)
+
+cat("dim:", dim(adsl_syn), "\n")
+cat("vars:", paste(head(names(adsl_syn), 12), collapse = ", "), "...\n")
+print(head(adsl_syn[, c("USUBJID", "TRT01A", "AGE", "SEX")], 3))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+dim: 12 21 
+vars: STUDYID, USUBJID, SUBJID, SITEID, TRT01A, TRT01AN, AGE, AGEU, SEX, RACE, ETHNIC, SAFFL ...
+           USUBJID              TRT01A AGE SEX
+1 CDISCPILOT01-001             Placebo  63   F
+2 CDISCPILOT01-002             Placebo  71   M
+3 CDISCPILOT01-003 Xanomeline Low Dose  55   F</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">data(dm, package = "pharmaversesdtm")</code>：把包内数据集加载进当前环境，心智上等于 <code class="inl">SET sdtm.dm</code>——只不过"库"是只读的安装包，加载后是你内存里的私有副本，随便改不怕污染原件。</li>
+<li><code class="inl">dim()</code>：返回"行数 列数"，等价于 PROC CONTENTS 首行的 Observations/Variables。</li>
+<li><code class="inl">glimpse()</code>：dplyr 提供的"竖排 PROC CONTENTS"——每个变量一行，显示类型（<code class="inl">&lt;chr&gt;</code>/<code class="inl">&lt;dbl&gt;</code>）与前几个值；宽数据集（SDTM 动辄几十列）用它比 <code class="inl">str()</code> 舒服得多。</li>
+<li><code class="inl">system.file("extdata", ...)</code>：定位包安装目录下的文件，相当于用 SAS 的 <code class="inl">%sysfunc(pathname(...))</code> 找物理路径；synadam 的 ADaM 数据就在这里。</li>
+</ol></div>
+<div class="note">scda 是"概念块"：本机未安装且需要网络，正文只介绍用法。真实项目里三者可混用——pharmaversesdtm 做日常教学与单元测试，scda 做版本化回归，synadam 做 admiral 模板演练。</div>
+
+<h2 id="s2-2">2.2 SDTM 在 R 中的样子</h2>
+<p>SDTM 的语义你全懂，这里只回答一个问题：<strong>同一份 DM 域，在 R 里"看"起来什么样</strong>？关键变量与 SAS 心智的对照：</p>
+<table>
+<tr><th>SDTM 变量</th><th>R 类型</th><th>SAS 心智对照</th></tr>
+<tr><td><code class="inl">USUBJID</code></td><td>character</td><td>合并主键；等价于 <code class="inl">MERGE ... BY USUBJID</code> 的 BY 变量，R 里是 join 的 <code class="inl">by=</code></td></tr>
+<tr><td><code class="inl">ARM</code> / <code class="inl">ARMCD</code></td><td>character</td><td>治疗组标签/编码值。SAS 常靠 format 关联，R 里通常保持字符型，分析时转 factor 定组序</td></tr>
+<tr><td><code class="inl">RFXSTDTC</code> / <code class="inl">RFXENDTC</code></td><td>character</td><td>ISO 8601 字符日期，与 SAS SDTM 完全一致；进入分析层前必须转成 Date 类型</td></tr>
+<tr><td><code class="inl">BRTHDTC</code></td><td>character</td><td>同上；转成 <code class="inl">BRTHDT</code> 后才能算年龄</td></tr>
+<tr><td><code class="inl">AGE</code> / <code class="inl">AGEU</code></td><td>double / character</td><td>数值年龄 + 单位；对应 SAS 的 8 字节数值与 "YEARS"</td></tr>
+<tr><td><code class="inl">DTHFL</code></td><td>character（"Y" 或 NA）</td><td>标志变量。注意：非"Y"时是 <strong>NA</strong>，不是 SAS 的空字符串 <code class="inl">" "</code></td></tr>
+</table>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(pharmaversesdtm)
+library(dplyr, warn.conflicts = FALSE)
+dm &lt;- pharmaversesdtm::dm
+
+# SAS 心智：proc print data=dm(obs=4) keep=...
+dm %&gt;%
+  select(USUBJID, ARMCD, ARM, SEX, AGE, AGEU, BRTHDTC, RFXSTDTC, RFXENDTC, DTHFL) %&gt;%
+  slice_head(n = 4) %&gt;%
+  as.data.frame() %&gt;%
+  print()</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+      USUBJID  ARMCD                  ARM SEX AGE  AGEU    BRTHDTC   RFXSTDTC
+1 01-701-1015    Pbo              Placebo   F  63 YEARS 1950-12-26 2014-01-02
+2 01-701-1023    Pbo              Placebo   M  64 YEARS 1948-07-22 2012-08-05
+3 01-701-1028 Xan_Hi Xanomeline High Dose   M  71 YEARS 1942-07-11 2013-07-19
+4 01-701-1033 Xan_Lo  Xanomeline Low Dose   M  74 YEARS 1940-03-10 2014-03-18
+     RFXENDTC DTHFL
+1 2014-07-02  &lt;NA&gt;
+2 2012-09-01  &lt;NA&gt;
+3 2014-01-14  &lt;NA&gt;
+4 2014-03-31  &lt;NA&gt;</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">pharmaversesdtm::dm</code>：<code class="inl">包名::对象名</code> 直接取数，不加载整个包——相当于 <code class="inl">sdtm.dm</code> 这种"库.成员"写法，只是库换成了包。</li>
+<li><code class="inl">select(...)</code>：挑列，等价于 <code class="inl">KEEP=</code>；<code class="inl">slice_head(n = 4)</code> 等价于 <code class="inl">OBS=4</code>。</li>
+<li><code class="inl">%&gt;%</code> 是管道：把上一步结果递给下一个函数，SAS 里最接近的心智是 DATA step 的连续语句，但每步都是完整表达式。</li>
+<li><code class="inl">as.data.frame() %&gt;% print()</code>：pharmaversesdtm 的数据是 tibble（打印时会截断列并显示类型）；转成普通 data.frame 再打印，得到类似 SAS listing 的完整展示。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>R 没有 libname 引擎，"数据即对象"。<code class="inl">library(包)</code> ≈ 挂一个只读永久库，<code class="inl">data()</code> ≈ SET 进 work，写回递交格式用 <code class="inl">haven::write_xpt()</code>（XPT）。另一个坑：SDTM 的 ISO 字符日期在 R 里也<strong>应该</strong>保持字符型——别在 SDTM 层就地转 Date，那是 ADaM 层的事（下一节）。</div>
+
+<h2 id="s2-3">2.3 admiral：从 SDTM 推 ADSL</h2>
+<p><a href="https://pharmaverse.github.io/admiral/">admiral</a>（ADaM in R）是 pharmaverse 的 ADaM 衍生引擎：上百个 <code class="inl">derive_*()</code> 函数，每个都对应一类 ADaM IG 衍生逻辑，文档里直接引用 IG 条目。心智上它就是"全行业共同维护、经过验证的 ADaM 标准宏库"，只是形态从 %macro 变成了带断言检查的 R 函数。下面从 dm 出发推一个教学版 ADSL：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(admiral)
+library(dplyr, warn.conflicts = FALSE)
+library(pharmaversesdtm)
+dm &lt;- pharmaversesdtm::dm
+
+adsl &lt;- dm %&gt;%
+  select(-AGE, -AGEU) %&gt;%
+  # ISO 8601 字符日期 -&gt; Date 型变量（前缀 + DT）
+  derive_vars_dt(new_vars_prefix = "BRTH", dtc = BRTHDTC) %&gt;%
+  derive_vars_dt(new_vars_prefix = "TRTS", dtc = RFXSTDTC) %&gt;%
+  derive_vars_dt(new_vars_prefix = "TRTE", dtc = RFXENDTC) %&gt;%
+  # 年龄 = BRTHDT 到 TRTSDT 的时长，截断为整年
+  derive_vars_duration(
+    new_var = AGE, new_var_unit = AGEU,
+    start_date = BRTHDT, end_date = TRTSDT,
+    out_unit = "years", trunc_out = TRUE
+  ) %&gt;%
+  # 研究日：以 TRTSDT 为参照，为每个源变量生成 &lt;名&gt;DY
+  derive_vars_dy(reference_date = TRTSDT, source_vars = exprs(TRTSDT, TRTEDT))
+
+print(as.data.frame(adsl %&gt;%
+  select(USUBJID, BRTHDT, TRTSDT, AGE, AGEU, TRTSDY, TRTEDY) %&gt;%
+  head(5)))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+      USUBJID     BRTHDT     TRTSDT AGE  AGEU TRTSDY TRTEDY
+1 01-701-1015 1950-12-26 2014-01-02  63 years      1    182
+2 01-701-1023 1948-07-22 2012-08-05  64 years      1     28
+3 01-701-1028 1942-07-11 2013-07-19  71 years      1    180
+4 01-701-1033 1940-03-10 2014-03-18  74 years      1     14
+5 01-701-1034 1937-06-24 2014-07-01  77 years      1    183</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">select(-AGE, -AGEU)</code>：先丢掉 dm 自带的 AGE/AGEU 再重新推导——DATA step 里 <code class="inl">SET dm(DROP=AGE AGEU)</code> 的同款操作，目的是稍后能与原值对账。</li>
+<li><code class="inl">derive_vars_dt(new_vars_prefix = "TRTS", dtc = RFXSTDTC)</code>：把 ISO 字符日期转成真正的 Date 变量 <code class="inl">TRTSDT</code>（前缀 + DT）。日期不完整时可用 <code class="inl">highest_imputation</code>/<code class="inl">date_imputation</code> 参数做符合 ADaM IG 的填补，并自动生成 <code class="inl">*DTF</code> 填补标志。</li>
+<li><code class="inl">derive_vars_duration(...)</code>：AGE = BRTHDT → TRTSDT 的时长；<code class="inl">out_unit = "years"</code> 定单位，<code class="inl">trunc_out = TRUE</code> 对应 SAS 的 <code class="inl">INT()</code> 取整年龄，AGEU 同步生成。</li>
+<li><code class="inl">derive_vars_dy(reference_date = TRTSDT, source_vars = exprs(TRTSDT, TRTEDT))</code>：为 source_vars 里每个日期变量生成研究日 <code class="inl">TRTSDY</code>/<code class="inl">TRTEDY</code>；"参照日 = Day 1、没有 Day 0"的 SDTM/ADaM 规则已内置——所以 TRTSDY 恒为 1，TRTEDY 是治疗持续天数。</li>
+<li><code class="inl">exprs(...)</code>：rlang 的"未求值表达式列表"，把变量名当<em>名字</em>而非<em>值</em>传进去——近似 SAS 宏传参数名清单的心智，第 5 章会展开 tidy evaluation。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong><code class="inl">derive_vars_dy()</code> 没有 <code class="inl">new_var</code> 参数——新变量名固定为"源变量名 + DY"；且 <code class="inl">source_vars</code> 必须已经是 Date 型，直接塞 ISO 字符（如 <code class="inl">RFXENDTC</code>）会立刻报错。习惯先 <code class="inl">derive_vars_dt</code> 再 <code class="inl">derive_vars_dy</code>，两步走。</div>
+<div class="note">admiral 由 Roche、GSK、J&amp;J、Merck 等公司联合维护，是 R Consortium / pharmaverse 生态的旗舰包；每个函数的帮助页（如 <code class="inl">?derive_vars_duration</code>）都附 ADaM IG 出处和大量示例，遇到"这个衍生 IG 怎么规定的"先查它。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：在 admiral 中推导 TRTSDY、AEENDY 这类"研究日"变量（参照日 = Day 1，无 Day 0），应该用哪个函数族？</p>
+<button class="quiz-opt" data-opt="A">derive_vars_dt()</button>
+<button class="quiz-opt" data-opt="B">derive_vars_dy()</button>
+<button class="quiz-opt" data-opt="C">derive_vars_merged()</button>
+<div class="quiz-exp">选 B。derive_vars_dy() 以 reference_date 为参照、按 source_vars 批量生成 *DY 变量，并内置"无 Day 0"规则；derive_vars_dt() 负责 ISO 字符日期转 Date，derive_vars_merged() 负责从其他数据集合并变量（相当于 MERGE/lookup）。</div>
+</div>
+
+<h2 id="s2-4">2.4 ADAE：日期转换与首发标志</h2>
+<p>ADAE 的两个高频动作：把 <code class="inl">AESTDTC</code>/<code class="inl">AEENDTC</code> 转成分析日期（含缺失填补与填补标志），以及打"每受试者首次发生"标志（AOCC01FL 家族）。admiral 各用一个函数解决：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(admiral)
+library(dplyr, warn.conflicts = FALSE)
+library(pharmaversesdtm)
+ae &lt;- pharmaversesdtm::ae
+
+adae &lt;- ae %&gt;%
+  derive_vars_dt(new_vars_prefix = "AST", dtc = AESTDTC,
+                 highest_imputation = "M", flag_imputation = "date") %&gt;%
+  derive_vars_dt(new_vars_prefix = "AEN", dtc = AEENDTC,
+                 highest_imputation = "M", flag_imputation = "date") %&gt;%
+  derive_var_extreme_flag(
+    by_vars = exprs(USUBJID),
+    order = exprs(ASTDT, AESEQ),
+    new_var = AOCC01FL,
+    mode = "first"
+  )
+
+print(as.data.frame(adae %&gt;%
+  select(USUBJID, AESEQ, AEDECOD, ASTDT, ASTDTF, AOCC01FL) %&gt;%
+  filter(USUBJID == "01-701-1015")))
+cat("AOCC01FL: Y =", sum(adae$AOCC01FL == "Y", na.rm = TRUE),
+    "; 总 AE =", nrow(adae), "; 受试者数 =", n_distinct(adae$USUBJID), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+      USUBJID AESEQ                   AEDECOD      ASTDT ASTDTF AOCC01FL
+1 01-701-1015     1 APPLICATION SITE ERYTHEMA 2014-01-03   &lt;NA&gt;        Y
+2 01-701-1015     2 APPLICATION SITE PRURITUS 2014-01-03   &lt;NA&gt;     &lt;NA&gt;
+3 01-701-1015     3                 DIARRHOEA 2014-01-09   &lt;NA&gt;     &lt;NA&gt;
+AOCC01FL: Y = 225 ; 总 AE = 1191 ; 受试者数 = 225</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">derive_vars_dt(new_vars_prefix = "AST", dtc = AESTDTC)</code>：生成 <code class="inl">ASTDT</code>；<code class="inl">highest_imputation = "M"</code> 允许对"只有年"的日期做到月级填补，<code class="inl">flag_imputation = "date"</code> 生成 ADaM IG 要求的 <code class="inl">ASTDTF</code> 填补标志列（本数据日期完整，故全为 NA）。</li>
+<li><code class="inl">derive_var_extreme_flag(by_vars = exprs(USUBJID), order = exprs(ASTDT, AESEQ), ...)</code>：在每个受试者组内按 ASTDT（平手时用 AESEQ）排序，<code class="inl">mode = "first"</code> 给第一条记录打 <code class="inl">AOCC01FL = "Y"</code>，其余为 NA。</li>
+<li><code class="inl">filter(USUBJID == "01-701-1015")</code>：等价于 <code class="inl">WHERE USUBJID = "01-701-1015"</code>，抽查一个受试者的三条 AE——同日的两条里只有 AESEQ=1 那条拿到 Y。</li>
+<li>末行自查：Y 的个数（225）= 受试者数（225），每人恰好一个首发标志，逻辑自洽。这种"计数对账"应当写进你的 QC 脚本。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>SAS 打首发标志要 <code class="inl">PROC SORT</code> 后在 DATA step 里 <code class="inl">BY USUBJID ASTDT; IF FIRST.USUBJID</code>；R 里<strong>不需要物理排序数据</strong>，order 只是声明。但若 order 存在平手（同日两条 AE）而你不写 AESEQ 这样的 tie-breaker，打标结果就依赖原始行序——双编程比对时两边可能各打各的，差异查半天。规则：<em>order 必须能唯一定序</em>。</div>
+
+<h2 id="s2-5">2.5 ADTTE：时间至事件推导</h2>
+<p>TTE（Time-to-Event）是 SAS 程序员最熟悉的"多源取最早日期 + 删失"逻辑。admiral 的做法是<strong>声明式</strong>的：把每个事件/删失的来源写成 <code class="inl">event_source()</code>/<code class="inl">censor_source()</code> 对象，再交给 <code class="inl">derive_param_tte()</code> 统一裁决。下面是一个最小可跑的 OS（总生存）骨架：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(admiral)
+library(dplyr, warn.conflicts = FALSE)
+library(pharmaversesdtm)
+dm &lt;- pharmaversesdtm::dm
+
+# 最小 ADSL：治疗开始日、死亡日、最后已知存活日
+adsl &lt;- dm %&gt;%
+  derive_vars_dt(new_vars_prefix = "TRTS",   dtc = RFXSTDTC) %&gt;%
+  derive_vars_dt(new_vars_prefix = "DTH",    dtc = DTHDTC) %&gt;%
+  derive_vars_dt(new_vars_prefix = "LSTALV", dtc = RFENDTC)
+
+# 事件源：死亡（CNSR = 0）
+death &lt;- event_source(
+  dataset_name = "adsl",
+  filter = DTHFL == "Y",
+  date = DTHDT,
+  set_values_to = exprs(EVNTDESC = "DEATH", CNSR = 0)
+)
+
+# 删失源：最后已知存活日（CNSR = 1）
+lstaet &lt;- censor_source(
+  dataset_name = "adsl",
+  filter = TRUE,
+  date = LSTALVDT,
+  set_values_to = exprs(EVNTDESC = "LAST DATE KNOWN ALIVE", CNSR = 1)
+)
+
+adtte &lt;- derive_param_tte(
+  dataset_adsl = adsl,
+  source_datasets = list(adsl = adsl),
+  start_date = TRTSDT,
+  event_conditions = list(death),
+  censor_conditions = list(lstaet),
+  create_datetime = FALSE,
+  set_values_to = exprs(PARAMCD = "OS", PARAM = "Overall Survival")
+) %&gt;%
+  # TTE 天数：AVAL = ADT - STARTDT
+  derive_vars_duration(new_var = AVAL, start_date = STARTDT, end_date = ADT)
+
+print(as.data.frame(adtte %&gt;%
+  select(USUBJID, PARAMCD, AVAL, CNSR, EVNTDESC) %&gt;%
+  filter(CNSR == 0 | row_number() &lt;= 5)))
+cat("--- CNSR 分布（0 = 事件/死亡，1 = 删失）---\n")
+print(table(adtte$CNSR))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+      USUBJID PARAMCD AVAL CNSR              EVNTDESC
+1 01-701-1015      OS  182    1 LAST DATE KNOWN ALIVE
+2 01-701-1023      OS   29    1 LAST DATE KNOWN ALIVE
+3 01-701-1028      OS  180    1 LAST DATE KNOWN ALIVE
+4 01-701-1033      OS   28    1 LAST DATE KNOWN ALIVE
+5 01-701-1034      OS  183    1 LAST DATE KNOWN ALIVE
+6 01-701-1211      OS   61    0                 DEATH
+7 01-704-1445      OS  175    0                 DEATH
+8 01-710-1083      OS   12    0                 DEATH
+--- CNSR 分布（0 = 事件/死亡，1 = 删失）---
+
+  0   1 
+  3 251 </pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">event_source(dataset_name, filter, date, set_values_to)</code>：一份"数据来源声明"——从 <code class="inl">source_datasets</code> 列表里名为 <code class="inl">"adsl"</code> 的数据集取数，筛 <code class="inl">DTHFL == "Y"</code> 的行，取其 <code class="inl">DTHDT</code> 作事件日期，并给输出赋 EVNTDESC 与 CNSR=0。相当于把 SAS 里某一路 merge 支流的 WHERE + 赋值逻辑预先封装成对象。</li>
+<li><code class="inl">censor_source(...)</code>：结构与事件源相同，但 <code class="inl">filter = TRUE</code>（人人都有"最后已知存活日"）、CNSR=1。</li>
+<li><code class="inl">derive_param_tte(...)</code>：对每个受试者，在全部事件源里取<strong>最早</strong>的事件日期；没有事件则用删失源。输出 <code class="inl">STARTDT</code>（起点 TRTSDT）、<code class="inl">ADT</code>（事件或删失日期）、EVNTDESC、CNSR，PARAMCD/PARAM 由 <code class="inl">set_values_to</code> 赋值。</li>
+<li>注意 <code class="inl">AVAL</code> 不是自动生成的：TTE 天数要再接一步 <code class="inl">derive_vars_duration(new_var = AVAL, start_date = STARTDT, end_date = ADT)</code>。</li>
+<li>结果 254 行 &lt; dm 的 306 行：52 个筛选失败者没有 RFXSTDTC → TRTSDT 为 NA → 被自动排除。这符合"未治疗者不进 TTE 分析"的惯例，但你要<em>知道</em>它发生了——数一下行数永远是好习惯。</li>
+</ol></div>
+<div class="note">真实项目直接用 admiral 随包分发的 <a href="https://pharmaverse.github.io/admiral/articles/adtem.html">ADaM TTE 模板脚本</a>：多参数（OS/PFS/特定 AE 事件）时给每个 event_source 配不同的 PARAMCD，并把 adae、adrs 等多个数据集一起放进 <code class="inl">source_datasets</code>。第 6 案例（C2 生存分析）会用它跑完整流程。</div>
+
+<h2 id="s2-6">2.6 metadata 驱动：metacore 与 metatools</h2>
+<p>SAS 世界的 spec 活在 Excel 里，靠人眼执行；pharmaverse 的方向是 <strong>spec 即代码</strong>：<a href="https://pharmaverse.github.io/metacore/">metacore</a> 把映射 spec 解析成机器可读的元数据对象，<a href="https://pharmaverse.github.io/metatools/">metatools</a> 拿它来程序化地校验数据、补标签、按 spec 排序变量——相当于把"对照 define/spec 人工检查"这一步自动化。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(metacore)
+library(metatools)
+quiet &lt;- function(expr) suppressWarnings(suppressMessages(expr))
+
+# Excel spec（P21 风格，包内示例）-&gt; Metacore 对象
+mc &lt;- quiet(spec_to_metacore(metacore_example("p21_mock.xlsx")))
+mc
+
+# 取出 DM 域的元数据子集
+dm_spec &lt;- quiet(select_dataset(mc, dataset = "DM"))
+cat("DM spec 变量数:", nrow(dm_spec$var_spec), "\n")
+print(as.data.frame(dm_spec$var_spec[1:5, c("variable", "label", "type", "length")]))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+── Metacore object contains metadata for 5 datasets ────────────────────────────
+→ AE (Adverse Events)
+→ DM (Demographics)
+→ EX (Exposure)
+→ SUPPAE (Supplemental Qualifiers for AE)
+→ SUPPDM (Supplemental Qualifiers for DM)
+
+To use the Metacore object with metatools package, first subset a dataset using
+`metacore::select_dataset()`
+DM spec 变量数: 25 
+  variable                             label type length
+1  STUDYID                  Study Identifier text     12
+2   DOMAIN               Domain Abbreviation text      2
+3  USUBJID         Unique Subject Identifier text     11
+4   SUBJID  Subject Identifier for the Study text      4
+5  RFSTDTC Subject Reference Start Date/Time date     10</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">spec_to_metacore()</code>：读入 Excel spec，解析出数据集清单、变量定义（var_spec）、受控术语（codelists）、衍生规则等，装进一个 Metacore 对象；示例文件 <code class="inl">p21_mock.xlsx</code> 随包分发，覆盖 AE/DM/EX/SUPP--。</li>
+<li><code class="inl">select_dataset(mc, dataset = "DM")</code>：metatools 的函数一次只处理一个域，先取出 DM 子集。</li>
+<li><code class="inl">dm_spec$var_spec</code>：机器可读的 spec 行——变量名、标签、类型、长度，与 Excel 里你逐行核对的那些列一一对应。</li>
+<li>拿到 var_spec 后，<code class="inl">metatools::add_labels()</code> 给数据打变量标签、<code class="inl">check_ct_col()</code> 查受控术语合规、<code class="inl">order_cols()</code> 按 spec 排列列序、<code class="inl">sort_by_key()</code> 按主键排序——都直接以 spec 为准，不再抄 Excel。</li>
+</ol></div>
+<div class="note">现阶段 metacore/metatools 更适合"读 spec 做校验与标注"，完整的 spec→数据流水线仍在演进；企业实践常把它与 admiral 模板、testthat 断言组合。入门先跑通上面这个小例子，再读 metatools 的 vignette。</div>
+
+<h2 id="s2-7">2.7 双编程比对：diffdf</h2>
+<p>双编程纪律在 R 世界原样保留，只是 PROC COMPARE 换成了 <a href="https://atorus-research.github.io/diffdf/">diffdf</a>。构造两份"独立编程"的 ADSL（这里用副本故意改一处 AGE 模拟差异），按主键逐格比对：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(diffdf)
+library(admiral)
+library(dplyr, warn.conflicts = FALSE)
+library(pharmaversesdtm)
+
+adsl &lt;- pharmaversesdtm::dm %&gt;%
+  derive_vars_dt(new_vars_prefix = "TRTS", dtc = RFXSTDTC) %&gt;%
+  select(USUBJID, SEX, AGE, TRTSDT) %&gt;%
+  slice_head(n = 20)
+
+# 模拟"复现程序员"的独立结果：故意制造 1 处数值差异
+adsl_comp &lt;- adsl
+adsl_comp$AGE[3] &lt;- adsl_comp$AGE[3] + 1
+
+res &lt;- diffdf(adsl, adsl_comp, keys = "USUBJID")
+print(res)
+cat("是否存在差异:", diffdf_has_issues(res), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，展示有删减）
+In diffdf(adsl, adsl_comp, keys = "USUBJID") : 
+Not all Values Compared Equal
+Differences found between the objects!
+
+Summary of BASE and COMPARE
+  ==================================================================
+    PROPERTY             BASE                       COMP            
+  ------------------------------------------------------------------
+      Name               adsl                     adsl_comp         
+    Rows(#)               20                         20             
+   Columns(#)              4                          4             
+
+Not all Values Compared Equal
+  =============================
+   Variable  No of Differences 
+  -----------------------------
+     AGE             1         
+
+  ======================================
+   VARIABLE    USUBJID    BASE  COMPARE 
+  --------------------------------------
+     AGE     01-701-1028   71     72    
+是否存在差异: TRUE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">diffdf(base, compare, keys = "USUBJID")</code>：对标 PROC COMPARE 的 <code class="inl">ID USUBJID</code>——按主键对齐两份数据后逐变量、逐格比较，同时对行数、列数、变量类型/属性做整体核查。</li>
+<li>打印报告分三段：BASE/COMPARE 属性摘要、按变量汇总的差异计数、逐条差异明细（带主键值与两边的实际取值）——正好对应 PROC COMPARE 日志里你习惯扫的那几块。</li>
+<li><code class="inl">diffdf_has_issues(res)</code>：返回 TRUE/FALSE，可以直接塞进 <code class="inl">testthat::expect_false()</code> 断言或 CI 步骤，让"比对不过"自动红灯，而不是靠人读日志。</li>
+<li>备选：<code class="inl">arsenal::compare(adsl, adsl_comp, by = "USUBJID")</code> 同样按主键比对，输出可定制成表格/HTML 报告，对 tolerance、列序、变量忽略的控制更细——一句带过，需要漂亮比对报告时想它。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>PROC COMPARE 的 <code class="inl">criterion=</code>（EXACT/RELATIVE/ABSOLUTE）与 <code class="inl">outnoeq</code> 那套心智，在 diffdf 里对应 <code class="inl">tolerance =</code> 参数（数值绝对容差）。两个方向的坑：浮点衍生变量（两位程序员用不同算法算出的 AVAL）不设 tolerance 会满屏"伪差异"；反过来，AGE、AESEQ 这类整型变量<strong>不要</strong>习惯性放 tolerance——0.99 岁的差异会被静默放过，那就是真漏检了。按变量类型分别决定容差，并写进比对方案。</div>
+
+<h2 id="s2-8">2.8 CDISC CORE：把 conformance 变成代码</h2>
+<p><a href="https://github.com/CDISC-org/CORE">CDISC CORE</a>（Conformance Rule Engine）是 CDISC 官方的开源规则引擎：把 SDTM/ADaM/Define-XML/受控术语的 conformance 规则写成<strong>机器可执行</strong>的规则代码，配合可视化的 CORE Editor 在递交前对数据集做合规校验——相当于把 Pinnacle 21 类检查的核心逻辑开放化、可协作化。</p>
+<ul>
+<li><strong>规则即代码</strong>：每条规则是可版本控制、可测试、可复用的工件，而不是散落在核查计划文档里的一句话；社区可以直接给规则提 PR。</li>
+<li><strong>标准机器可读化</strong>：CT（受控术语）、IG 规则都以结构化形式发布，程序（包括你本章写的 R 校验脚本）可以直接消费。</li>
+<li><strong>与 AI 结合的趋势</strong>：当规则与数据标准都机器可读后，"AI 辅助数据清洗、自动生成校验、解释 conformance finding"就有了可靠的地基——这也是 PharmaSUG 近两年 DS/SS/SI 专题的主线之一（见章末本地精读）。</li>
+</ul>
+<div class="note">对 SAS Programmer 的含义：你写的每一条 <code class="inl">IF ... THEN PUT "ERROR: ..."</code> 式核查，未来都可能对应 CORE 里一条现成规则；学 R 校验栈（diffdf + testthat + metatools）的同时，值得把 CORE 的规则库当"核查计划模板"翻一翻。</div>
+
+<h2 id="s2-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://pharmaverse.github.io/admiral/">admiral 官方文档</a> — 全部 derive_* 函数参考手册与 ADaM 模板脚本，写衍生的第一查询处 <span class="tag">进阶</span></li>
+<li><a href="https://pharmaverse.github.io/examples/">pharmaverse examples</a> — 从 SDTM 到 ADaM 到 TLF 的端到端示例代码库 <span class="tag">进阶</span></li>
+<li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">PharmaSUG 2026 ET-279</a> — Goodbye SAS, Hello R：CDISC 全流程实战论文 <span class="tag">进阶</span></li>
+<li><a href="https://github.com/insightsengineering/scda">scda</a> — 年度归档的合成 SDTM+ADaM 数据，版本化回归测试利器 <span class="tag">参考</span></li>
+<li>本地精读：<a href="../PharmaSUG2026-Analysis/03-DS-SS-SI-数据标准与递交.md">03-DS-SS-SI-数据标准与递交.md</a> — PharmaSUG 2026 数据标准方向论文精读 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s2-ex">本章练习</h2>
+<ol>
+<li>（易）在 2.3 的 adsl 基础上再衍生一个字段：用 <code class="inl">derive_vars_duration()</code> 从 TRTSDT/TRTEDT 算出治疗持续天数 <code class="inl">TRTDURD</code>，并抽查前 5 行与 TRTEDY 的关系。</li>
+<li>（中）给 2.4 的 adae 增加 <code class="inl">AOCC02FL</code>（每受试者<em>每 PT</em> 的首次发生标志）：提示是把 <code class="inl">by_vars</code> 扩成 <code class="inl">exprs(USUBJID, AEDECOD)</code>，做完用计数对账——Y 的总数应等于"受试者 × 出现过的 PT"组合数。</li>
+<li>（难）写一个可复用的双编程比对脚本：函数形式接收两份 ADSL（csv/xpt 路径）、主键与按变量的 tolerance 清单，内部调用 <code class="inl">diffdf()</code>，有差异时打印明细并以非零状态退出（<code class="inl">quit(status = 1)</code>），无差异时输出一行"COMPARE PASSED"——这就是能挂进 CI 的最小比对闸门。</li>
+</ol>
+<p class="lede">下一章：统计分析——PROC FREQ、PROC LIFETEST、PROC MIXED 里你天天跑的假设检验、生存分析与混合模型，在 R 里怎么做、怎么验、怎么进递交。</p>
+</article></main>
+<aside class="toc">
+<a href="#s2-1">2.1 数据三源</a>
+<a href="#s2-2">2.2 SDTM 在 R 中的样子</a>
+<a href="#s2-3">2.3 admiral 推 ADSL</a>
+<a href="#s2-4">2.4 ADAE</a>
+<a href="#s2-5">2.5 ADTTE</a>
+<a href="#s2-6">2.6 metadata 驱动</a>
+<a href="#s2-7">2.7 双编程比对 diffdf</a>
+<a href="#s2-8">2.8 CDISC CORE</a>
+<a href="#s2-res">章末资源</a>
+<a href="#s2-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

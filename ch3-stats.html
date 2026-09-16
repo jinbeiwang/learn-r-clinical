@@ -1,0 +1,647 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 3 章 统计分析：从生存曲线到 MMRM · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a class="on" href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 3 章</div>
+<div class="chapnum">03</div>
+<h1>统计分析：从生存曲线到 MMRM</h1>
+<p class="lede">你已经会读 SAP、会审 TLF、知道 HR 与 p 值意味着什么。这一章只做一件事：把 PROC SGPLOT / LIFETEST / PHREG / MIXED / FREQ 换成 R 的等价物，并且让你逐行看懂输出——本章每个代码块都在 R 4.5.0 上实跑过，输出原样贴出。</p>
+
+<h2 id="s3-1">3.1 ggplot2 的图层语法：把 SGPLOT 的心智拆开重装</h2>
+<p>SAS 里画图是"一句 <code class="inl">PROC SGPLOT</code> + 一堆选项"：你告诉 SAS 画什么图（VBAR）、按什么分组（GROUP=）、怎么排版（ODS）。ggplot2 换了个思路——它不是"画图命令"，而是<strong>图形语法（grammar of graphics）</strong>：一张图由六个可独立替换的层叠起来。</p>
+<p>先用一份自造的迷你 ADSL + ADAE 画 AE 系统器官分类（SOC）的分组条形图。数据是模拟的，结构是真的：<code class="inl">USUBJID / TRT01P</code> 在 ADSL，<code class="inl">AEDECOD / AEBODSYS</code> 在 ADAE，按 USUBJID 合并——和你在 SAS 里做的完全一样。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(ggplot2)
+set.seed(2024)
+n &lt;- 120
+## 迷你 ADSL：120 例受试者，随机分到三组
+adsl &lt;- data.frame(
+  USUBJID = sprintf("S%03d", seq_len(n)),
+  TRT01P  = factor(rep(c("Placebo", "Drug 20mg", "Drug 50mg"), length.out = n),
+                   levels = c("Placebo", "Drug 20mg", "Drug 50mg"))
+)
+## 迷你 ADAE：214 条 AE 记录，PT 归属 5 个 SOC
+soc  &lt;- c("Nervous system", "Gastrointestinal", "Skin", "General", "Respiratory")
+pt   &lt;- list(c("Headache", "Dizziness"), c("Nausea", "Diarrhoea"),
+             c("Rash", "Pruritus"), c("Fatigue", "Pyrexia"), c("Cough"))
+aeterm &lt;- unlist(pt)
+aesoc  &lt;- rep(soc, sapply(pt, length))
+ae &lt;- data.frame(
+  USUBJID  = sample(adsl$USUBJID, 214, replace = TRUE),
+  AEDECOD  = sample(aeterm, 214, replace = TRUE)
+)
+ae$AEBODSYS &lt;- aesoc[match(ae$AEDECOD, aeterm)]
+ae &lt;- merge(ae, adsl, by = "USUBJID")   # 等价于 SAS: merge ae adsl; by USUBJID;
+
+## 四层就够出图：data -&gt; mapping -&gt; geom -&gt; theme
+p &lt;- ggplot(ae, aes(x = AEBODSYS, fill = TRT01P)) +
+  geom_bar(position = "dodge") +
+  labs(x = "System Organ Class", y = "Number of AE events",
+       title = "AE count by SOC and treatment") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("fig31_ae_soc.png", p, width = 7, height = 4.2, dpi = 150)
+cat("png written:", file.exists("fig31_ae_soc.png"), "\n")
+print(table(ae$AEBODSYS, ae$TRT01P))
+cat("subjects with &gt;=1 AE:", length(unique(ae$USUBJID)), "of", n, "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+png written: TRUE
+                   Placebo Drug 20mg Drug 50mg
+  Gastrointestinal      17        19        16
+  General               19        14        20
+  Nervous system        15        19        17
+  Respiratory           11         6         3
+  Skin                  12        12        14
+subjects with &gt;=1 AE: 102 of 120</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">ggplot(ae, aes(...))</code>：<strong>data 层</strong>指定"画哪个数据框"，<strong>mapping 层</strong>（<code class="inl">aes()</code>）指定"哪个变量走哪个视觉通道"——<code class="inl">x=AEBODSYS</code> 走横轴，<code class="inl">fill=TRT01P</code> 走填充色。SAS 里这两件事分别对应 <code class="inl">DATA=</code> 与 <code class="inl">VBAR AEBODSYS / GROUP=TRT01P</code>。</li>
+<li><code class="inl">geom_bar(position = "dodge")</code>：<strong>geom 层</strong>决定"用什么几何体、怎么摆"。<code class="inl">geom_bar()</code> 默认 <code class="inl">stat="count"</code>，也就是<strong>自己数行数</strong>，你不需要先跑一遍频数；<code class="inl">position="dodge"</code> 让同一 SOC 的三个治疗组并排（SAS 里是 <code class="inl">GROUPDISPLAY=CLUSTER</code>）。想堆叠就换 <code class="inl">position="stack"</code>，想看比例就换 <code class="inl">position="fill"</code>。</li>
+<li><code class="inl">labs()</code>：轴标题、图标题、图例标题。对应 SAS 的 <code class="inl">LABEL=</code> / <code class="inl">XAXISLABEL=</code>，但 R 里"标签"是图层的一部分，可以被后面的图层覆盖。</li>
+<li><code class="inl">theme_minimal(base_size = 12)</code>：<strong>theme 层</strong>只管长相（网格线、字号、背景），不管数据。类比 ODS 图形样式（<code class="inl">ODS GRAPHICS / RESET=ATTRVAR</code> 或 <code class="inl">STYLEATTRS</code>）。</li>
+<li><code class="inl">theme(axis.text.x = element_text(angle = 45, hjust = 1))</code>：theme 是"局部覆盖全局"的——先套一个整体主题，再单独把 x 轴标签转 45°。<code class="inl">hjust=1</code> 让标签右对齐到刻度上，这是 SOC 这类长标签的标准处理。</li>
+<li><code class="inl">ggsave()</code>：把图落盘。<strong>递交里请用 ggsave，不要用截图</strong>：它显式记录 <code class="inl">width/height/dpi</code>，图形尺寸可复现、可写进程序头注释。</li>
+<li><code class="inl">table(ae$AEBODSYS, ae$TRT01P)</code>：这就是图上每根柱子的高度，也是你 QC 时的"数字底稿"。图形与表格永远一起核对。</li>
+</ol></div>
+<table>
+<tr><th>ggplot2 的层</th><th>职责</th><th>SAS PROC SGPLOT 里的近似对应</th></tr>
+<tr><td><code class="inl">data</code></td><td>用哪个数据集</td><td><code class="inl">DATA=</code></td></tr>
+<tr><td><code class="inl">mapping</code>（aes）</td><td>变量 → 视觉通道（x/y/fill/color/size/shape）</td><td><code class="inl">VBAR x / RESPONSE=y / GROUP=g</code></td></tr>
+<tr><td><code class="inl">geom</code></td><td>几何体与统计变换（bar/boxplot/point/step…）</td><td>选择 PROC 内的语句（VBAR、VBOX、SCATTER、STEP）</td></tr>
+<tr><td><code class="inl">scale</code></td><td>坐标轴/颜色/图例的取值与变换（log 轴、自定义色）</td><td><code class="inl">XAXIS TYPE=LOG</code>、<code class="inl">STYLEATTRS DATACONTRASTCOLORS=</code></td></tr>
+<tr><td><code class="inl">facet</code></td><td>按变量拆成多面板（小倍数图）</td><td><code class="inl">BY</code> 语句 / <code class="inl">PANELBY</code></td></tr>
+<tr><td><code class="inl">theme</code></td><td>纯外观：字号、网格、边距</td><td>ODS 图形样式、<code class="inl">ODS GRAPHICS / IMAGEMAP</code></td></tr>
+</table>
+<p>再叠两层看看威力——<code class="inl">scale</code> 自定义颜色与坐标轴余量，<code class="inl">facet</code> 按治疗组拆面板。同样的数据，换两层就换了一种表达：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">## scale 层：自定义填充色 + 去掉 y 轴下方留白；facet 层：按治疗组拆面板
+adsl$SEX &lt;- factor(sample(c("F", "M"), n, replace = TRUE))
+ae &lt;- merge(ae, adsl[, c("USUBJID", "SEX")], by = "USUBJID")
+p2 &lt;- ggplot(ae, aes(x = AEBODSYS, fill = SEX)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ TRT01P) +
+  scale_fill_manual(values = c(F = "#8172B3", M = "#64B5CD"), name = "Sex") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  labs(x = "System Organ Class", y = "Number of AE events") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("fig31b_ae_facet.png", p2, width = 9, height = 3.6, dpi = 150)
+cat("facet png written:", file.exists("fig31b_ae_facet.png"), "\n")
+print(table(ae$TRT01P, ae$SEX))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+facet png written: TRUE
+             F  M
+  Placebo   32 42
+  Drug 20mg 38 32
+  Drug 50mg 31 39</pre>
+<div class="pitfall"><strong>SAS 误区：</strong>在 SAS 里你会先 <code class="inl">PROC FREQ</code> 出计数再画，或者用 <code class="inl">VBAR SOC / RESPONSE=COUNT STAT=SUM</code>；<code class="inl">geom_bar()</code> 默认自己数<strong>行数</strong>。ADAEM 是"一行一条 AE"，所以数出来的是 AE 条数（本例 214 条），<strong>不是受试者数</strong>。要画"有 ≥1 次 AE 的受试者比例"，必须先 <code class="inl">unique(ae[, c("USUBJID","AEBODSYS","TRT01P")])</code> 去重再画，或用 <code class="inl">geom_bar(aes(y = USUBJID), stat = "unique")</code>（ggplot2 3.4+）。图注写"n (%) of subjects"却画的是事件数，是 AE 图最常见的翻车点。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 1：<code class="inl">aes(x = AEBODSYS, fill = TRT01P)</code> 这一句在图层语法里扮演什么角色？</p>
+<button class="quiz-opt" data-opt="A">数据层：它决定了用哪个数据框</button>
+<button class="quiz-opt" data-opt="B">映射层：它把数据变量绑定到视觉通道（横轴位置、填充色）</button>
+<button class="quiz-opt" data-opt="C">主题层：它设定了颜色和字体外观</button>
+<div class="quiz-exp">选 B。数据框由 <code class="inl">ggplot(ae, ...)</code> 的第一个参数决定；颜色的<strong>具体色值</strong>由 scale 层（如 <code class="inl">scale_fill_manual()</code>）决定；aes 只负责"哪个变量映射到哪个通道"。分清 mapping 与 scale，是读懂任何 ggplot 代码的钥匙。</div>
+</div>
+
+<h2 id="s3-2">3.2 Surv 对象：生存数据在 R 里的最小结构</h2>
+<p>SAS 的 <code class="inl">PROC LIFETEST</code> 吃两个变量：<code class="inl">TIME=</code> 和 <code class="inl">STATUS=</code>。R 的 survival 包把这两列打包成一个特殊矩阵——<code class="inl">Surv</code> 对象，删失的行在打印时带 <code class="inl">+</code> 号。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(survival)
+lung &lt;- survival::lung
+## Surv(时间, 事件指示) -&gt; 一个 228 x 2 的特殊矩阵
+s &lt;- Surv(lung$time, lung$status == 2)
+cat("class:", class(s), "| type:", attr(s, "type"),
+    "| dim:", paste(dim(s), collapse = " x "), "\n")
+print(head(s, 10))
+cat("--- event flag column, first 10 ---\n")
+print(head(s[, "status"], 10))
+cat("--- original status coding in lung ---\n")
+print(table(lung$status))
+cat("--- recoded event counts (1 = death, 0 = censored) ---\n")
+print(table(s[, "status"]))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+class: Surv | type: right | dim: 228 x 2
+ [1]  306   455  1010+  210   883  1022+  310   361   218   166
+--- event flag column, first 10 ---
+ [1] 1 1 0 1 1 0 1 1 1 1
+--- original status coding in lung ---
+  1   2
+ 63 165
+--- recoded event counts (1 = death, 0 = censored) ---
+  0   1
+ 63 165</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">Surv(time, event)</code> 返回的是 <code class="inl">class = "Surv"</code> 的 <strong>228 × 2 矩阵</strong>：第 1 列是时间，第 2 列（列名 <code class="inl">status</code>）是事件指示。<code class="inl">attr(s, "type") = "right"</code> 表示右删失——正是 LIFETEST 的默认设定。</li>
+<li><code class="inl">print(head(s, 10))</code> 里的 <code class="inl">1010+</code>、<code class="inl">1022+</code>：<strong>加号就是删失</strong>。这一眼扫过去，你能立刻分辨"到 1010 天还活着（随访截尾）"和"到 1010 天发生事件"。这是 SAS 输出里没有的直观表达。</li>
+<li><code class="inl">lung$status</code> 的原始编码是 <strong>1 = 删失、2 = 死亡</strong>（反直觉！），所以 <code class="inl">lung$status == 2</code> 生成 TRUE/FALSE，Surv 自动转成 <strong>1 = 事件、0 = 删失</strong>，共 165 个事件、63 个删失。</li>
+<li>事件编码的<strong>铁律</strong>：R 里 <code class="inl">1 = 发生事件，0 = 删失</code>。与 SAS 不同——LIFETEST 里 <code class="inl">STATUS=</code> 的非缺失值默认全算事件，你得用 <code class="inl">STATUS=xx(event)</code> 或 <code class="inl">EVENTS=</code> 显式指定哪些值算事件。</li>
+</ol></div>
+<div class="note">对照 <code class="inl">PROC LIFETEST DATA=adtte TIME=ADT/AVAL EVENT=AVAL(CNSR)</code>：SAS 用"哪个值算事件"的括号语法，R 用"逻辑表达式直接生成 0/1"。两种写法都要求你在动手前把 ADTTE 的 <code class="inl">CNSR / EVNTDESC</code> 编码查清楚——这一步在哪个语言里都省不掉。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>直接写 <code class="inl">Surv(time, status)</code> 把原始编码扔进去。survival 包有个"贴心"规则：当数值型 event 的<strong>最大值恰好为 2</strong> 时，它自动执行 <code class="inl">status - 1</code>——所以 <code class="inl">Surv(lung$time, lung$status)</code> 侥幸得到正确结果（165 个事件）。但一旦你的编码是三态（0=存活、1=进展、2=死亡），减 1 后会出现 <code class="inl">-1</code>，Surv 只抛一条警告 <code class="inl">Invalid status value, converted to NA</code>，然后<strong>静默删行</strong>。我们实跑验证过：9 条记录里 3 条变成 NA，<code class="inl">survfit</code> 只报一句 "3 observations deleted due to missingness"，样本量悄悄少了三分之一而分析照跑。递交代码里请永远显式写 <code class="inl">as.integer(status == 2)</code> 或 <code class="inl">factor(status)</code>。</div>
+<div class="quiz" data-answer="C">
+<p class="quiz-q">测验 2：ADTTE 里 <code class="inl">CNSR</code> 编码为 0=事件、1=删失，下面哪句是正确的 Surv 写法？</p>
+<button class="quiz-opt" data-opt="A">Surv(AVAL, CNSR)</button>
+<button class="quiz-opt" data-opt="B">Surv(AVAL, CNSR == 0)</button>
+<button class="quiz-opt" data-opt="C">A 和 B 都对，因为 CNSR 只有 0/1 两个取值</button>
+<div class="quiz-exp">选 B。<code class="inl">Surv(AVAL, CNSR)</code> 会把"删失"（CNSR=1）当成事件、把"事件"（CNSR=0）当成删失，方向完全反了，而且<strong>不会报任何错</strong>——KM 曲线照样画出来。正确写法是 <code class="inl">Surv(AVAL, CNSR == 0)</code>，或更保险地 <code class="inl">Surv(AVAL, as.integer(CNSR == 0))</code>。C 是陷阱：CNSR 最大值为 1，不触发"最大值等于 2 就减 1"的规则，所以没有任何自动纠正。</div>
+</div>
+
+<h2 id="s3-3">3.3 KM 曲线与 log-rank 检验</h2>
+<p>三件套：<code class="inl">survfit()</code> 出 KM 估计与中位生存时间、<code class="inl">survdiff()</code> 出 log-rank 检验、<code class="inl">survminer::ggsurvplot()</code> 出可直接进报告的图。数据仍用 <code class="inl">lung</code>，按性别分组。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(survival)
+lung &lt;- survival::lung
+lung$event &lt;- as.integer(lung$status == 2)   # 1 = 死亡，0 = 删失
+fit &lt;- survfit(Surv(time, event) ~ sex, data = lung)
+print(fit)                                   # n / events / median / 95% CI
+cat("--- survival rate at 365 days ---\n")
+print(round(summary(fit, times = 365)$surv, 3))
+cat("--- log-rank test ---\n")
+print(survdiff(Surv(time, event) ~ sex, data = lung))
+cat("--- survminer plot ---\n")
+library(survminer)
+p &lt;- ggsurvplot(fit, data = lung, pval = TRUE, conf.int = TRUE,
+                risk.table = TRUE, xlab = "Days", ylab = "Survival probability",
+                legend.labs = c("Male", "Female"),
+                palette = c("#4C72B0", "#DD8452"), ggtheme = theme_minimal())
+ggsave("fig33_km_sex.png", plot = p$plot, width = 7, height = 4.6, dpi = 150)
+cat("png written:", file.exists("fig33_km_sex.png"), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+Call: survfit(formula = Surv(time, event) ~ sex, data = lung)
+        n events median 0.95LCL 0.95UCL
+sex=1 138    112    270     212     310
+sex=2  90     53    426     348     550
+--- survival rate at 365 days ---
+[1] 0.336 0.526
+--- log-rank test ---
+Call:
+survdiff(formula = Surv(time, event) ~ sex, data = lung)
+        N Observed Expected (O-E)^2/E (O-E)^2/V
+sex=1 138      112     91.6      4.55      10.3
+sex=2  90       53     73.4      5.68      10.3
+ Chisq= 10.3  on 1 degrees of freedom, p= 0.001
+--- survminer plot ---
+png written: TRUE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">survfit(Surv(time, event) ~ sex, data = lung)</code>：公式右边是分组变量，等价于 SAS 的 <code class="inl">STRATA sex;</code>（注意：<strong>不是</strong> <code class="inl">class</code>，是分层出多条 KM 曲线）。</li>
+<li><code class="inl">print(fit)</code> 就是 LIFETEST 输出里最常被引用的那几行：男性（sex=1）138 例、112 个事件、<strong>中位生存 270 天（95% CI 212–310）</strong>；女性 90 例、53 个事件、中位 426 天（348–550）。这个表可以直接进 TLF 的"生存总结"部分。</li>
+<li><code class="inl">summary(fit, times = 365)$surv</code>：取指定时间点的生存率——365 天时男性 0.336、女性 0.526。这就是"1 年生存率"，SAS 里对应 <code class="inl">TIMELIST=(365)</code> 或 SURVIVALPLOT 上的读数。要 CI 就取 <code class="inl">summary(fit, times=365)$lower / $upper</code>。</li>
+<li><code class="inl">survdiff()</code>：log-rank 检验。<code class="inl">Chisq = 10.3</code>、<code class="inl">df = 1</code>、<code class="inl">p = 0.001</code>，与 LIFETEST 的 "Test of Equality over Strata"（Log-Rank 那一行）逐字对应。表里的 <code class="inl">Observed / Expected / (O-E)^2/V</code> 三列也和 SAS 一致。</li>
+<li><code class="inl">ggsurvplot()</code> 参数：<code class="inl">pval=TRUE</code> 在图上打 log-rank p 值，<code class="inl">conf.int=TRUE</code> 画 95% 置信带，<code class="inl">risk.table=TRUE</code> 在曲线下方加"风险人数表"（递交图几乎必备），<code class="inl">legend.labs</code> 把 sex=1/2 翻译成人话。</li>
+<li><code class="inl">ggsave(plot = p$plot, ...)</code>：<code class="inl">ggsurvplot</code> 返回的是一个<strong>列表</strong>（曲线 + 风险表 + p 值注记），不是单个 ggplot 对象，所以要指定 <code class="inl">p$plot</code>。想把曲线和风险表一起存盘，用 <code class="inl">png(); print(p); dev.off()</code>。</li>
+</ol></div>
+<div class="note">两个实用变体：<br>① 不想先造 <code class="inl">event</code> 列，可以直接把逻辑表达式写进公式：<code class="inl">survfit(Surv(time, status == 2) ~ sex, data = lung)</code>——我们实跑验证过，两条曲线与中位数<strong>完全一致</strong>（<code class="inl">identical(fit1$surv, fit2$surv) == TRUE</code>）。但递交程序里更推荐显式造列，因为 ADaM 变量应当可追溯到 spec。<br>② <code class="inl">survdiff(..., rho = 1)</code> 是 Gehan-Breslow-Wilcoxon 检验（对应 LIFETEST 的 <code class="inl">/WILCOX</code>）；默认 <code class="inl">rho = 0</code> 才是 log-rank。SAP 写的是哪个，就用哪个。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>中位生存时间的 CI 对不上。survfit 默认 <code class="inl">conf.type = "log"</code>（对 log(−log S) 做正态近似再回变换），而 LIFETEST 的 <code class="inl">CLTYPE=</code> 还有 LINEAR、LOGIT、ARC_SINE 等选项。双编程比对时中位数差 1–2 天，先查这两个选项，再怀疑数据。</div>
+
+<h2 id="s3-4">3.4 Cox 比例风险模型</h2>
+<p><code class="inl">coxph()</code> 就是 PROC PHREG。模型：<code class="inl">Surv(time, event) ~ age + sex + ph.ecog</code>。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(survival)
+lung &lt;- survival::lung
+lung$event &lt;- as.integer(lung$status == 2)
+d &lt;- lung[, c("time", "event", "age", "sex", "ph.ecog")]
+cat("rows total:", nrow(d), "| after dropping NA:", nrow(na.omit(d)), "\n")
+d &lt;- na.omit(d)
+fit &lt;- coxph(Surv(time, event) ~ age + sex + ph.ecog, data = d)
+s &lt;- summary(fit)
+cat("ties method:", fit$method, "\n")
+print(round(s$coefficients, 4))
+cat("--- hazard ratios (exp(coef)) with 95% CI ---\n")
+print(round(s$conf.int, 3))
+cat("concordance:", round(s$concordance[1], 3),
+    "| likelihood ratio p =", signif(s$logtest[3], 3), "\n")
+cat("n =", s$n, "| events =", s$nevent, "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+rows total: 228 | after dropping NA: 227
+ties method: efron
+           coef exp(coef) se(coef)       z Pr(&gt;|z|)
+age      0.0111    1.0111   0.0093  1.1942   0.2324
+sex     -0.5526    0.5754   0.1677 -3.2945   0.0010
+ph.ecog  0.4637    1.5900   0.1136  4.0829   0.0000
+--- hazard ratios (exp(coef)) with 95% CI ---
+        exp(coef) exp(-coef) lower .95 upper .95
+age         1.011      0.989     0.993     1.030
+sex         0.575      1.738     0.414     0.799
+ph.ecog     1.590      0.629     1.273     1.986
+concordance: 0.637 | likelihood ratio p = 1.08e-06
+n = 227 | events = 164</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">ties method: efron</code>：处理同一时间多个事件（ties）的方法。<code class="inl">coxph</code> 默认 Efron，<strong>PROC PHREG 的 <code class="inl">TIES=</code> 默认也是 EFRON</strong>——这一点两边天然对齐，不用特意设置。要复现老程序的 <code class="inl">TIES=BRESLOW</code>，写 <code class="inl">coxph(..., ties = "breslow")</code>。</li>
+<li><code class="inl">coef</code> 是对数风险比；<strong><code class="inl">exp(coef)</code> 才是 HR</strong>，也就是 PHREG 输出里的 "Hazard Ratio" 列。<code class="inl">se(coef)</code>、<code class="inl">z</code>、<code class="inl">Pr(&gt;|z|)</code> 三列与 PHREG 的 "Pr &gt; |z|" 完全同义（都是 Wald 检验）。</li>
+<li><strong>怎么读这三个 HR</strong>：<code class="inl">age</code> HR = 1.011（95% CI 0.993–1.030，p = 0.23）——每大 1 岁风险约高 1.1%，但不显著；<code class="inl">ph.ecog</code> HR = 1.590（1.273–1.986，p &lt; 0.001）——ECOG 每恶化 1 级，死亡风险约升 59%，是最强预后因子；<code class="inl">sex</code> HR = 0.575（0.414–0.799，p = 0.001）。</li>
+<li><code class="inl">concordance = 0.637</code>：C 指数（判别力），相当于把所有可比较的病对里"模型排序正确"的比例，0.5 = 瞎猜、1 = 完美。SAS 里要额外算（<code class="inl">%concordance</code> 宏或 PHREG 无直接输出），R 里 <code class="inl">summary()</code> 白送。</li>
+<li><code class="inl">n = 227, events = 164</code>：分析集与事件数——写进表格脚注的两个数。原始 228 行里有 1 行 <code class="inl">ph.ecog</code> 缺失被删掉。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区一（静默删行）：</strong><code class="inl">coxph</code> 默认 <code class="inl">na.action = na.omit</code>，缺一个协变量就整行扔掉，只在 <code class="inl">print(fit)</code> 里留一句 "1 observation deleted"。SAS 的 PROC PHREG 也是默默删，但至少 log 里有个数。递交程序里请<strong>先 <code class="inl">na.omit()</code> 并打印行数</strong>（本例代码就是这么做的：228 → 227），或者在 SAP 里写清"完整病例分析"。<br><strong>SAS 误区二（把数值当分类）：</strong>SAS 的 <code class="inl">CLASS</code> 语句会自动把分类变量做成哑变量；<code class="inl">coxph</code> 对 <code class="inl">factor</code> 也这么做，但对<strong>数值变量一律当连续线性</strong>。<code class="inl">lung$sex</code> 是 1=男、2=女，模型把它当成连续变量，于是 HR = 0.575 的字面含义是"sex 每增加 1 个单位（男 → 女）"。结果数值上没错（两水平时等价），但表述荒谬、且三水平以上就彻底错了。规范写法：<code class="inl">factor(sex, levels = c(1, 2), labels = c("Male","Female"))</code> 并显式设参考组（<code class="inl">relevel()</code>）。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 3：本模型中 <code class="inl">sex</code>（1=男，2=女）的 <code class="inl">exp(coef) = 0.575</code>，正确解读是？</p>
+<button class="quiz-opt" data-opt="A">男性的死亡风险是女性的 57.5%</button>
+<button class="quiz-opt" data-opt="B">编码为 2 的组（女性）相对编码为 1 的组（男性），死亡风险比为 0.575，即女性风险约为男性的 58%</button>
+<button class="quiz-opt" data-opt="C">性别每变化 1%，死亡风险下降 0.575%</button>
+<div class="quiz-exp">选 B。HR 小于 1 表示"比较组"风险更低，而这里的比较组是<strong>数值更大的那一组</strong>（女性）。这与 3.3 的 KM 结果一致：女性中位生存 426 天 &gt; 男性 270 天。A 把方向说反了；C 是把分类变量误当连续百分比解读。</div>
+</div>
+
+<h2 id="s3-5">3.5 MMRM：mmrm 包与 PROC MIXED 的对照</h2>
+<p>MMRM（混合效应重复测量模型）是纵向疗效分析的主力，R 里的对应物是 <code class="inl">mmrm</code> 包——它<strong>不是</strong> <code class="inl">lme4</code> 的包装，而是基于 TMB 的专用实现，默认就给你 Satterthwaite（或 Kenward-Roger）自由度调整，专为"每个访视点的治疗差"这一估计目标设计。</p>
+<p>先造数据：80 例受试者 × 3 个访视（Week 4/8/12），变量 <code class="inl">USUBJID / ARM / BASE / AVISIT / AVISITN / FEV1</code>，并在 Week 12 制造 14 条 MAR 式脱落。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">set.seed(42)
+nsub &lt;- 80
+sub &lt;- data.frame(
+  USUBJID = sprintf("S%03d", seq_len(nsub)),
+  ARM     = factor(rep(c("Placebo", "Active"), length.out = nsub),
+                   levels = c("Placebo", "Active")),
+  BASE    = round(rnorm(nsub, mean = 50, sd = 10), 1)
+)
+sub$bi &lt;- round(rnorm(nsub, 0, 4), 2)   # 受试者随机截距：纵向相关性的来源
+dat &lt;- data.frame(
+  USUBJID = rep(sub$USUBJID, each = 3),
+  ARM     = factor(rep(sub$ARM, each = 3), levels = levels(sub$ARM)),
+  BASE    = rep(sub$BASE, each = 3),
+  bi      = rep(sub$bi, each = 3),
+  AVISITN = rep(1:3, times = nsub),
+  AVISIT  = factor(rep(c("Week 4", "Week 8", "Week 12"), times = nsub),
+                   levels = c("Week 4", "Week 8", "Week 12"))
+)
+dat$FEV1 &lt;- round(dat$BASE + 3 * dat$AVISITN +
+                  ifelse(dat$ARM == "Active", 2.5 * dat$AVISITN, 0) +
+                  dat$bi + rnorm(nrow(dat), 0, 3), 1)
+## MAR 式脱落：随机删掉 14 条 Week 12 记录
+dropout &lt;- sample(which(dat$AVISITN == 3), 14)
+dat &lt;- dat[!seq_len(nrow(dat)) %in% dropout,
+           c("USUBJID", "ARM", "BASE", "AVISITN", "AVISIT", "FEV1")]
+cat("rows:", nrow(dat), "| subjects:", length(unique(dat$USUBJID)), "\n")
+print(table(dat$ARM, dat$AVISIT))
+cat(paste(capture.output(head(dat, 4)), collapse = "\n"), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+rows: 226 | subjects: 80
+          Week 4 Week 8 Week 12
+  Placebo     40     40      35
+  Active      40     40      31
+  USUBJID     ARM BASE AVISITN  AVISIT FEV1
+1    S001 Placebo 63.7       1  Week 4 72.2
+2    S001 Placebo 63.7       2  Week 8 72.5
+3    S001 Placebo 63.7       3 Week 12 79.2
+4    S002  Active 44.4       1  Week 4 49.8</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>数据是<strong>长格式</strong>（一人一访视一行），240 行减去 14 条脱落 = 226 行、80 个受试者。这正是 PROC MIXED 需要的形状，也是 ADaM ADLB/ADVSS 的形状。</li>
+<li>真实效应设定为：Active 组每个访视额外增加 <code class="inl">2.5 × AVISITN</code>，即 Week 4 差 2.5、Week 8 差 5.0、Week 12 差 <strong>7.5</strong>。后面看到估计值 8.8 时，你知道那是抽样波动，不是模型错。</li>
+<li><code class="inl">sub$bi</code> 是受试者级随机截距（SD = 4），它让同一个人的三次测量彼此相关——这就是"重复测量"要建模的东西。它<strong>不出现在最终数据里</strong>，只作为数据生成机制存在。</li>
+<li><code class="inl">AVISIT</code> 必须是 <code class="inl">factor</code> 且 <code class="inl">levels</code> 按访视顺序排列：mmrm 用它的水平来定义协方差矩阵的行列，顺序错了矩阵就错了。</li>
+</ol></div>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(mmrm)
+fit &lt;- mmrm(FEV1 ~ ARM + AVISIT + ARM:AVISIT + BASE + us(AVISIT | USUBJID),
+            data = dat)
+print(fit)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+mmrm fit
+Formula:     FEV1 ~ ARM + AVISIT + ARM:AVISIT + BASE + us(AVISIT | USUBJID)
+Data:        dat (used 226 observations from 80 subjects with maximum 3
+timepoints)
+Covariance:  unstructured (6 variance parameters)
+Inference:   REML
+Deviance:    1252.894
+Coefficients:
+            (Intercept)               ARMActive            AVISITWeek 8
+              3.6621742               3.0170305               2.8625000
+          AVISITWeek 12                    BASE  ARMActive:AVISITWeek 8
+              5.6948399               0.9731705               2.9075000
+ARMActive:AVISITWeek 12
+              5.7788999
+Model Inference Optimization:
+Converged with code 0 and message: convergence: rel_reduction_of_f &lt;= factr*epsmch</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>公式左边 <code class="inl">FEV1 ~ ARM + AVISIT + ARM:AVISIT + BASE</code> 是<strong>固定效应</strong>：治疗主效应、访视主效应、<strong>治疗 × 访视交互</strong>、基线校正。SAP 里那句"MMRM with treatment, visit, treatment-by-visit interaction and baseline as covariates"就是它。</li>
+<li><code class="inl">us(AVISIT | USUBJID)</code> 是<strong>随机效应/协方差部分</strong>：<code class="inl">us()</code> = unstructured 非结构协方差，<code class="inl">AVISIT</code> = 在哪个维度上建协方差（访视），<code class="inl">USUBJID</code> = <strong>谁是重复测量的个体</strong>。整体对应 SAS 的 <code class="inl">REPEATED AVISIT / SUBJECT=USUBJID TYPE=UN;</code>。</li>
+<li><code class="inl">Covariance: unstructured (6 variance parameters)</code>：3 个访视的非结构矩阵 = 3 个方差 + 3 个协方差 = <strong>6 个参数</strong>（n(n+1)/2）。它不假设相关随时间衰减，因此最"贵"也最保守——这是监管场景的默认选择。</li>
+<li><code class="inl">Inference: REML</code>：与 PROC MIXED 默认一致。注意：<strong>REML 的似然不能用于比较固定效应不同的模型</strong>，要比 AIC 需 <code class="inl">reml = FALSE</code>（3.6 节和本章练习会用到）。</li>
+<li><code class="inl">Converged with code 0</code>：收敛信息。SAS 里你会去 log 里找 "Convergence criteria met"；R 里 <code class="inl">print(fit)</code> 直接印出来，<code class="inl">fit$opt_details</code> 里还有更多细节。<strong>没确认收敛就不要往下读结果。</strong></li>
+<li>系数里 <code class="inl">BASE = 0.973</code> 接近 1，说明基线校正工作正常；<code class="inl">ARMActive = 3.017</code> 是<strong>参考访视（Week 4）</strong>的治疗差，不是总体差。</li>
+</ol></div>
+<p>模型跑通只是第一步，你要的三个东西是：协方差矩阵、治疗差的 CI、指定访视点的校正均数差。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("--- residual within-subject covariance (US, 3 visits) ---\n")
+print(round(VarCorr(fit), 2))
+cat("--- treatment-related coefficients with 95% CI ---\n")
+tab &lt;- cbind(Estimate = coef(fit), confint(fit))
+print(round(tab[grep("ARM", rownames(tab)), , drop = FALSE], 3))
+cat("--- adjusted difference at Week 12 via emmeans ---\n")
+library(emmeans); emm_options(lmer.df = "satterthwaite")
+em &lt;- emmeans(fit, pairwise ~ ARM | AVISIT)
+print(subset(em$contrasts, AVISIT == "Week 12"))
+cat("--- information criteria ---\n")
+cat("logLik:", round(as.numeric(logLik(fit)), 2), "| AIC:", round(AIC(fit), 2),
+    "| BIC:", round(BIC(fit), 2), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+--- residual within-subject covariance (US, 3 visits) ---
+        Week 4 Week 8 Week 12
+Week 4   25.06  12.13   16.54
+Week 8   12.13  18.71   14.15
+Week 12  16.54  14.15   24.77
+--- treatment-related coefficients with 95% CI ---
+                        Estimate 2.5 % 97.5 %
+ARMActive                  3.017 0.788  5.246
+ARMActive:AVISITWeek 8     2.908 0.941  4.874
+ARMActive:AVISITWeek 12    5.779 3.829  7.729
+--- adjusted difference at Week 12 via emmeans ---
+ contrast         AVISIT  estimate   SE   df t.ratio p.value
+ Placebo - Active Week 12     -8.8 1.16 75.5  -7.551 &lt;0.0001
+--- information criteria ---
+logLik: -626.45 | AIC: 1264.89 | BIC: 1279.19</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">VarCorr(fit)</code> 给出<strong>受试者内残差协方差矩阵</strong>（3×3，对称）：对角线是各访视的残差方差（25.06 / 18.71 / 24.77），非对角是协方差。对应 SAS 的 <code class="inl">ESTIMATE</code> 后 <code class="inl">"Covariance Parameter Estimates"</code> 里 UN 的 6 个参数（SAS 印的是 UN(1,1)…UN(3,3) 与 UN(2,1)…UN(3,2)，同一批数、不同排版）。</li>
+<li><code class="inl">confint(fit)</code> 默认用 <strong>Satterthwaite 自由度</strong>，等价于 PROC MIXED 的 <code class="inl">DDFM=SATTERTHWAITE</code>。想要 Kenward-Roger 就 <code class="inl">confint(fit, method = "KR")</code>（对应 <code class="inl">DDFM=KR</code>）。</li>
+<li><strong>关键陷阱</strong>：<code class="inl">ARMActive:AVISITWeek 12 = 5.779</code> <strong>不是</strong> Week 12 的治疗差！它只是"相对 Week 4 的增量差"。真正的 Week 12 校正差 = <code class="inl">ARMActive + ARMActive:AVISITWeek 12 = 3.017 + 5.779 ≈ 8.8</code>。SAS 里 <code class="inl">LSMEANS ARM*AVISIT / DIFF;</code> 会自动帮你组合，R 里必须自己写线性组合或用 emmeans。</li>
+<li><code class="inl">emmeans(fit, pairwise ~ ARM | AVISIT)</code> 就是 <code class="inl">LSMEANS / DIFF</code> 的 R 版：输出 Week 12 的差 <strong>−8.8（SE 1.16，df 75.5，t = −7.55，p &lt; 0.0001）</strong>。符号为负是因为 emmeans 按字母序做了 <code class="inl">Placebo − Active</code>；翻正号即 <strong>Active 比 Placebo 高 8.8</strong>。这与手工线性组合的结果逐位一致，可互为 QC。</li>
+<li><code class="inl">df = 75.5</code> 是小数——这正是 Satterthwaite 调整的特征（PROC MIXED 也会给 75.x 这种小数自由度）。看到整数 df 反而要警惕是不是退化成 z 检验了。</li>
+</ol></div>
+<table>
+<tr><th>SAS PROC MIXED</th><th>R mmrm</th><th>说明</th></tr>
+<tr><td><code class="inl">MODEL FEV1 = ARM AVISIT ARM*AVISIT BASE / DDFM=SATTHER;</code></td><td><code class="inl">FEV1 ~ ARM + AVISIT + ARM:AVISIT + BASE</code></td><td>固定效应；mmrm 默认即 Satterthwaite</td></tr>
+<tr><td><code class="inl">REPEATED AVISIT / SUBJECT=USUBJID TYPE=UN;</code></td><td><code class="inl">+ us(AVISIT | USUBJID)</code></td><td>非结构协方差；<code class="inl">TYPE=CS/ARH/TOEPH</code> 对应 <code class="inl">cs()/ar1h()/toeph()</code></td></tr>
+<tr><td><code class="inl">METHOD=REML</code>（默认）</td><td><code class="inl">reml = TRUE</code>（默认）</td><td>比较 AIC 时两边都要换成 ML</td></tr>
+<tr><td><code class="inl">LSMEANS ARM*AVISIT / DIFF CL;</code></td><td><code class="inl">emmeans(fit, pairwise ~ ARM | AVISIT)</code></td><td>校正均数与治疗差</td></tr>
+<tr><td><code class="inl">ESTIMATE 'diff at W12' ...;</code></td><td>手工线性组合 <code class="inl">L %*% coef(fit)</code>，或 emmeans <code class="inl">contrast()</code></td><td>自定义估计目标</td></tr>
+<tr><td><code class="inl">Covariance Parameter Estimates</code></td><td><code class="inl">VarCorr(fit)</code></td><td>协方差参数</td></tr>
+</table>
+<div class="pitfall"><strong>SAS 误区（本章作者亲自踩过）：</strong>网上大量教程与旧版文档写 <code class="inl">mmrm(FEV1 ~ ARM + AVISIT + ARM:AVISIT + BASE | USUBJID, data = dat)</code>，即把 <code class="inl">| USUBJID</code> 直接接在固定效应后面。<strong>在 mmrm 0.3.18 上这句会直接报错</strong>：<code class="inl">Covariance structure must be specified in formula. Possible covariance structures include: us, toep, toeph, ar1, ar1h, ad, adh, cs, csh, sp_exp, sp_gau</code>。现在的语法要求把<strong>协方差结构、时间维度、个体</strong>三件事一起写进 <code class="inl">us(AVISIT | USUBJID)</code>。看到旧代码请照此改写；报错信息本身已经把可用结构列全了。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 4：mmrm 公式中 <code class="inl">| USUBJID</code> 的作用是什么？</p>
+<button class="quiz-opt" data-opt="A">把 USUBJID 作为固定效应纳入模型</button>
+<button class="quiz-opt" data-opt="B">指定重复测量的个体，即在该受试者内部（within-subject）建立各访视间的协方差结构</button>
+<button class="quiz-opt" data-opt="C">剔除 USUBJID 缺失的记录</button>
+<div class="quiz-exp">选 B。竖线左边是协方差结构与时间维度（<code class="inl">us(AVISIT)</code>），右边是"谁被重复测量"。它对应 PROC MIXED 的 <code class="inl">SUBJECT=USUBJID</code>：模型据此知道哪几行属于同一个人，从而为这些行的残差估计一个协方差矩阵，而不是假设所有观测独立。选 A 会把 80 个受试者做成 80 个哑变量（固定个体效应），那不是 MMRM；选 C 完全无关。</div>
+</div>
+
+<h2 id="s3-6">3.6 lme4 对照：什么时候用 lmer，什么时候用 mmrm</h2>
+<p>同一份数据，用 <code class="inl">lme4::lmer()</code> 写"随机截距模型"。它更通用、生态更大，但假设更强。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(lme4)
+fit2 &lt;- lmer(FEV1 ~ ARM * AVISIT + BASE + (1 | USUBJID), data = dat)
+cat("--- variance components: random intercept =&gt; compound symmetry ---\n")
+print(VarCorr(fit2))
+cat("--- fixed effects ---\n")
+print(round(summary(fit2)$coefficients[, 1:2], 3))
+cat("REML deviance:", round(deviance(fit2, REML = TRUE), 2),
+    "| logLik:", round(as.numeric(logLik(fit2)), 2), "\n")
+library(mmrm)
+fit1 &lt;- mmrm(FEV1 ~ ARM + AVISIT + ARM:AVISIT + BASE + us(AVISIT | USUBJID), data = dat)
+cat("mmrm US logLik:", round(as.numeric(logLik(fit1)), 2),
+    "| mmrm US AIC:", round(AIC(fit1), 2), "\n")
+cat("lmer RI AIC:", round(AIC(fit2), 2), "(ML vs REML: not directly comparable)\n")
+fit2ml &lt;- lmer(FEV1 ~ ARM * AVISIT + BASE + (1 | USUBJID), data = dat, REML = FALSE)
+cat("lmer ML AIC:", round(AIC(fit2ml), 2),
+    "| mmrm ML AIC:", round(AIC(update(fit1, reml = FALSE)), 2), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+--- variance components: random intercept => compound symmetry ---
+ Groups   Name        Std.Dev.
+ USUBJID  (Intercept) 3.7517
+ Residual             2.9443
+--- fixed effects ---
+                        Estimate Std. Error
+(Intercept)                2.999      2.308
+ARMActive                  3.017      1.066
+AVISITWeek 8               2.862      0.658
+AVISITWeek 12              5.700      0.690
+BASE                       0.986      0.043
+ARMActive:AVISITWeek 8     2.908      0.931
+ARMActive:AVISITWeek 12    5.848      0.998
+REML deviance: 1259.42 | logLik: -629.09
+mmrm US logLik: -626.45 | mmrm US AIC: 1264.89
+lmer RI AIC: 1276.19 (ML vs REML: not directly comparable)
+lmer ML AIC: 1277.42 | mmrm ML AIC: 1265.9</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">(1 | USUBJID)</code>：竖线在这里的含义与 mmrm 不同——<strong>左边是随机效应项（截距 1），右边是分组变量</strong>。整句意思是"每个受试者有一个自己的随机截距"。</li>
+<li>随机截距 ⇒ 协方差矩阵形如 <code class="inl">σ²_b·J + σ²·I</code>，即<strong>复合对称（CS）</strong>：所有访视方差相同、任意两次测量相关相同。这里 <code class="inl">σ_b = 3.75</code>、<code class="inl">σ = 2.94</code>，隐含相关 ≈ 3.75²/(3.75²+2.94²) ≈ 0.62。只有 <strong>2 个</strong>协方差参数，而 mmrm 的 US 用了 6 个。</li>
+<li>固定效应点估计与 mmrm 几乎相同（<code class="inl">ARMActive</code> 都是 3.017，<code class="inl">BASE</code> 0.986 vs 0.973），但<strong>标准误不同</strong>（1.066 vs mmrm 的 Satterthwaite SE），且 lmer 的 <code class="inl">summary()</code> <strong>默认不给 p 值</strong>——这是 lme4 作者的刻意设计（分母自由度无公认定义）。要 p 值请装 <code class="inl">lmerTest</code>，它把 <code class="inl">lmer</code> 对象升级成带 Satterthwaite/KR 自由度的版本。</li>
+<li>AIC 比较必须<strong>同为 ML</strong>：ML 下 mmrm(US) 1265.90 优于 lmer(CS) 1277.42，说明这份数据的残差协方差确实不是复合对称的（US 用更多参数换到了更好的拟合）。上面 <code class="inl">lmer RI AIC: 1276.19</code> 是 REML 值，<strong>不能</strong>与 ML 值直接比，所以代码里特地又跑了一次 <code class="inl">REML = FALSE</code>。</li>
+</ol></div>
+<table>
+<tr><th>需求</th><th>选 mmrm</th><th>选 lme4::lmer</th></tr>
+<tr><td>监管递交的主疗效分析（每个访视点的校正差 + CI）</td><td>✓ 默认 Satterthwaite/KR、与 PROC MIXED REPEATED 一一对应、emmeans 原生支持</td><td>需 lmerTest 补 p 值，协方差结构受限</td></tr>
+<tr><td>非结构 / Toeplitz / AR(1) 等残差协方差</td><td>✓ us/toeph/ar1/cs 等开箱即用</td><td>需手写结构或用 nlme/gls</td></tr>
+<tr><td>多层随机效应（中心 + 受试者）、GLMM、非正态结局、大样本</td><td>不适合</td><td>✓ 这是 lme4 的主场</td></tr>
+<tr><td>随机斜率、生长曲线、缺失机制建模</td><td>有限</td><td>✓ <code class="inl">(AVISITN | USUBJID)</code> 一句搞定</td></tr>
+</table>
+<div class="note">一句话记法：<strong>纵向疗效主分析用 mmrm（它是为 SAS PROC MIXED REPEATED 的替代而生的）；复杂随机效应结构与非正态结局用 lme4。</strong>两者竖线语法形似而义不同，这是 SAS 转 R 最容易混的一处。</div>
+
+<h2 id="s3-7">3.7 分类数据：卡方与 CMH 分层分析</h2>
+<p>响应率比较：先粗分析（2×2 卡方），再按中心分层（Mantel-Haenszel）。下面四个中心的合计<strong>正好等于</strong>粗表，这样你能直接看出分层有没有改变结论。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">tab &lt;- matrix(c(42, 18, 30, 35), nrow = 2, byrow = TRUE,
+              dimnames = list(Treatment = c("Active", "Placebo"),
+                              Response  = c("Yes", "No")))
+print(tab)
+print(chisq.test(tab))
+cat("crude OR:", round((42 * 35) / (18 * 30), 3), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+         Response
+Treatment Yes No
+  Active   42 18
+  Placebo  30 35
+	Pearson's Chi-squared test with Yates' continuity correction
+data:  tab
+X-squared = 6.3209, df = 1, p-value = 0.01193
+crude OR: 2.722</pre>
+<pre class="code" style="white-space:pre"><code class="lang-r">## 2 x 2 x K 数组：第三维是分层变量（中心）
+cen &lt;- array(dim = c(2, 2, 4),
+             dimnames = list(Treatment = c("Active", "Placebo"),
+                             Response  = c("Yes", "No"),
+                             Center    = paste("Site", 1:4)))
+vals &lt;- list(c(12, 4, 9, 11), c(9, 3, 8, 10), c(11, 6, 7, 6), c(10, 5, 6, 8))
+for (k in 1:4) cen[, , k] &lt;- matrix(vals[[k]], 2, byrow = TRUE)
+cat("--- site margins sum back to the crude table ---\n")
+print(apply(cen, c(1, 2), sum))
+print(mantelhaen.test(cen))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+--- site margins sum back to the crude table ---
+         Response
+Treatment Yes No
+  Active   42 18
+  Placebo  30 35
+	Mantel-Haenszel chi-squared test with continuity correction
+data:  cen
+Mantel-Haenszel X-squared = 6.1387, df = 1, p-value = 0.01323
+alternative hypothesis: true common odds ratio is not equal to 1
+95 percent confidence interval:
+ 1.305296 5.774277
+sample estimates:
+common odds ratio
+         2.745385</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">chisq.test(tab)</code>：Pearson 卡方，<code class="inl">X-squared = 6.3209</code>、<code class="inl">df = 1</code>、<code class="inl">p = 0.0119</code>。粗 OR = (42×35)/(18×30) = 2.722，即 Active 组响应优势约为 Placebo 的 2.7 倍。</li>
+<li>注意输出标题里的 <strong>"with Yates' continuity correction"</strong>：R 对 2×2 表<strong>默认做耶茨连续性校正</strong>，PROC FREQ 的 <code class="inl">/CHISQ</code> 不校正。要复现 SAS 的 7.2645 / p = 0.00703，必须写 <code class="inl">chisq.test(tab, correct = FALSE)</code>（两个数都实跑验证过）。这是双编程比对里"p 值总差一点"的头号原因。</li>
+<li><code class="inl">mantelhaen.test(cen)</code>：输入是 <code class="inl">2 × 2 × K</code> 数组，第三维就是 SAS <code class="inl">STRATA</code> 语句里的分层变量。输出三件东西：<strong>CMH 卡方</strong>（6.1387，p = 0.0132）、<strong>合并 OR 及其 95% CI</strong>（2.745，1.305–5.774）、以及备择假设说明。</li>
+<li>粗 OR 2.722 与分层 OR 2.745 几乎相同 ⇒ 中心<strong>不是</strong>明显的混杂因素，也没有强烈的效应异质性。这正是 CMH 的用途：在控制分层变量的同时给出一个合并估计。若两者差异很大，就要回头查中心效应（并考虑 Breslow-Day 同质性检验，<code class="inl">mantelhaen.test</code> 不提供，需用 <code class="inl">DescTools::BreslowDayTest()</code>）。</li>
+<li>对应 SAS：<code class="inl">PROC FREQ; TABLES TRT*RESP / CHISQ CMH RELRISK; STRATA CENTER;</code> —— <code class="inl">/CMH</code> 输出的 "Mantel-Haenszel Chi-Square" 与 "Common Odds Ratio" 就是这里两行。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>① 忘了 <code class="inl">correct = FALSE</code>，卡方值与 SAS 对不上就怀疑数据；② 小样本硬用卡方——期望频数 &lt; 5 时应改用 <code class="inl">fisher.test(tab)</code>（本例 Fisher p = 0.0109，OR = 2.70，与卡方结论一致），PROC FREQ 对应 <code class="inl">/EXACT</code> 或 <code class="inl">FISHER</code> 选项；③ 想复现 SAS 的 "Exact" 或 simulate.p.value 时，R 侧有 <code class="inl">chisq.test(..., simulate.p.value = TRUE, B = 2000)</code>，但那是蒙特卡洛近似，与 SAS 的精确概率不是一回事。</div>
+<div class="quiz" data-answer="A">
+<p class="quiz-q">测验 5：双编程时你在 R 里得到卡方 6.32、SAS 里得到 7.26，最可能的原因是？</p>
+<button class="quiz-opt" data-opt="A">R 的 chisq.test 对 2×2 表默认启用 Yates 连续性校正，SAS /CHISQ 默认不校正</button>
+<button class="quiz-opt" data-opt="B">两边用了不同的数据集</button>
+<button class="quiz-opt" data-opt="C">R 的卡方统计量公式与 SAS 不同</button>
+<div class="quiz-exp">选 A。加 <code class="inl">correct = FALSE</code> 后 R 给出 X-squared = 7.2645、p = 0.00703，与 SAS 一致。Pearson 卡方公式两边完全相同（C 错）；数据没变（B 错）。同理，<code class="inl">mantelhaen.test</code> 默认也带连续性校正，要与 SAS CMH 严格对齐需评估这一点。</div>
+</div>
+
+<h2 id="s3-8">3.8 森林图：forestploter 画出亚组 HR</h2>
+<p>森林图的数据框要有一个<strong>留白列</strong>（这里名字就是一个空格 <code class="inl">` `</code>），图形会画在那一列的位置上——这是 forestploter 的核心机制。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(forestploter)
+library(grid)
+library(ggplot2)
+df &lt;- data.frame(
+  Subgroup = c("Overall", "  Age &lt; 65", "  Age &gt;= 65", "  Male", "  Female"),
+  N        = c(420, 250, 170, 240, 180),
+  `HR (95% CI)` = c("0.72 (0.55-0.94)", "0.65 (0.46-0.92)", "0.84 (0.55-1.28)",
+                    "0.70 (0.50-0.98)", "0.76 (0.48-1.20)"),
+  ` `      = rep("", 5),
+  check.names = FALSE, stringsAsFactors = FALSE)
+est  &lt;- c(0.72, 0.65, 0.84, 0.70, 0.76)
+low  &lt;- c(0.55, 0.46, 0.55, 0.50, 0.48)
+high &lt;- c(0.94, 0.92, 1.28, 0.98, 1.20)
+tm &lt;- forest_theme(base_size = 10, refline_gp = gpar(col = "grey40"),
+                   ci_Theight = 0.01, legend.position = "bottom")
+p &lt;- forest(df, est = est, lower = low, upper = high,
+            ci_column = 4, ref_line = 1, xlim = c(0.4, 1.4), theme = tm)
+ggsave("fig38_forest.png", p, width = 8, height = 3.7, dpi = 150)
+cat("class(p):", paste(class(p), collapse = "/"), "| png written:",
+    file.exists("fig38_forest.png"), "\n")
+print(df[, c("Subgroup", "N", "HR (95% CI)")])</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+class(p): forestplot/gtable/gTree/grob/gDesc | png written: TRUE
+     Subgroup   N      HR (95% CI)
+1     Overall 420 0.72 (0.55-0.94)
+2    Age &lt; 65 250 0.65 (0.46-0.92)
+3   Age &gt;= 65 170 0.84 (0.55-1.28)
+4        Male 240 0.70 (0.50-0.98)
+5      Female 180 0.76 (0.48-1.20)</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">`HR (95% CI)`</code> 与 <code class="inl">` `</code>：反引号让 R 接受带空格/括号的列名。<code class="inl">` `</code>（一个空格）就是留给图形的空白列，<code class="inl">check.names = FALSE</code> 防止 R 把它改名成 <code class="inl">X.</code>。</li>
+<li><code class="inl">est / lower / upper</code> 是<strong>数值向量</strong>，顺序与 df 的行一一对应；而 <code class="inl">HR (95% CI)</code> 那一列是<strong>给人看的字符串</strong>。图形由数值画，文字由字符串显示，两者要你自己保证一致（这就是 QC 检查点）。</li>
+<li><code class="inl">ci_column = 4</code>：图形画在第 4 列（即那个空格列）。<code class="inl">ref_line = 1</code>：无效线在 1（HR/OR/RR 用 1；若是均数差则用 0）。<code class="inl">xlim = c(0.4, 1.4)</code>：横轴范围，务必覆盖所有 CI 上下限，否则线会被截断。</li>
+<li><code class="inl">forest_theme()</code>：主题对象。注意用 <code class="inl">refline_gp = gpar(...)</code>；旧参数 <code class="inl">refline_col</code> 已弃用，会打印警告（本例输出中已无该警告，因为我们改用了新参数）。</li>
+<li><code class="inl">class(p)</code> 是 <code class="inl">forestplot/gtable/gTree/grob/gDesc</code>——<strong>它是 grid 图形对象，不是 ggplot 对象</strong>。好消息：<code class="inl">ggsave()</code> 能接受它（内部自动包装），实跑成功；也可以用传统写法 <code class="inl">png("f.png", width=2400, height=1100, res=300); grid.newpage(); grid.draw(p); invisible(dev.off())</code>，这条路我们也验证过可行。</li>
+<li>Subgroup 里 <code class="inl">"  Age &lt; 65"</code> 的前导空格是<strong>手工缩进</strong>：森林图的层级感（Overall 顶格、亚组缩进）就靠字符串排版实现。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>SAS 里森林图往往靠 <code class="inl">PROC SGPANEL</code> + 注释或第三方宏拼，很多人干脆在 Word 里手画。R 这边要记住两条：① <strong>亚组森林图不是多重检验</strong>——图上五个 HR 各不相同，不能据此宣称"某亚组更有效"；要下这个结论必须做治疗 × 亚组的<strong>交互检验</strong>（Cox 里加 <code class="inl">trt*subgroup</code>，看交互项 p 值），并把亚组分析在 SAP 里声明为探索性。② 横轴是<strong>对数尺度思维</strong>：0.5 与 2.0 到无效线 1 的距离相等。若你把 <code class="inl">xlim</code> 设成线性对称（如 0–3），图会误导读者。</div>
+
+<h2 id="s3-9">3.9 期中分析与成组序贯边界：gsDesign</h2>
+<p>期中分析的数学核心是 α 消耗（alpha spending）：你多看一次数据，就必须为这次"看"预付一部分 I 类错误预算。<code class="inl">gsDesign</code> 直接算出边界。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(gsDesign)
+## k = 2 次分析（1 次期中 + 1 次最终），test.type = 1 为单侧优效设计
+## alpha/beta/timing 均为默认值，这里显式写出便于对照 SAP
+d &lt;- gsDesign(k = 2, test.type = 1, alpha = 0.025, beta = 0.1, timing = 1)
+print(d)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，已去空行）
+One-sided group sequential design with
+90 % power and 2.5 % Type I Error.
+           Sample
+            Size
+  Analysis Ratio*  Z   Nominal p Spend
+         1  0.504 2.75    0.0030 0.003
+         2  1.009 1.98    0.0238 0.022
+     Total                       0.0250
+++ alpha spending:
+ Hwang-Shih-DeCani spending function with gamma = -4.
+* Sample size ratio compared to fixed design with no interim
+Boundary crossing probabilities and expected sample size
+assume any cross stops the trial
+Upper boundary (power or Type I Error)
+          Analysis
+   Theta      1      2 Total   E{N}
+  0.0000 0.0030 0.0220 0.025 1.0072
+  3.2415 0.3271 0.5729 0.900 0.8437</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">k = 2</code>：总共 2 次分析（期中 + 最终）；<code class="inl">timing = 1</code> 表示期中安排在信息量 50% 处（输出中 Analysis 1 的 Sample Size Ratio = 0.504）。</li>
+<li><strong>Z 边界</strong>：期中 <code class="inl">Z = 2.75</code>（名义 p = 0.0030），最终 <code class="inl">Z = 1.98</code>（名义 p = 0.0238）。<strong>Spend 列</strong>是这次分析"花掉"的 α：0.003 + 0.022 = <strong>Total 0.0250</strong>，正好等于预算，一分不多。</li>
+<li>这就是"看数据的代价"：最终分析的临界 p 从固定设计的 0.025 <strong>收紧到 0.0238</strong>。你的 SAP 必须写明用的是这个边界，而不是 0.025。</li>
+<li><strong>Sample Size Ratio = 1.009</strong>：为了换取一次期中分析的机会，最大信息量（事件数/样本量）只需比固定设计多 <strong>0.9%</strong>——期中分析其实很便宜。</li>
+<li>下半部分的越界概率表：<code class="inl">Theta = 0.0000</code> 是<strong>原假设成立</strong>的情形，两次分析累计越上界概率 0.0030 + 0.0220 = 0.025，即 I 类错误被精确控制在 2.5%；<code class="inl">Theta = 3.2415</code> 是<strong>备择假设</strong>（对应 90% power）的情形，累计越界 0.3271 + 0.5729 = <strong>0.900</strong>，即 power 达标。</li>
+<li><code class="inl">E{N}</code>：期望样本量（相对最大值的比例）。原假设下 1.0072（几乎必然跑到最大），备择假设下 <strong>0.8437</strong>——若药物真有效，平均只用 84% 的样本量就能停止。这才是期中分析的真正收益。</li>
+</ol></div>
+<pre class="code" style="white-space:pre"><code class="lang-r">cat("--- bounds on the Z scale ---\n")
+print(round(d$upper$bound, 4))
+cat("--- information fraction / nominal p ---\n")
+print(round(cbind(timing = d$timing, z = d$upper$bound,
+                  p_nominal = pnorm(d$upper$bound, lower.tail = FALSE)), 4))
+cat("information at analysis 1 / 2:", round(d$n.I, 3), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+--- bounds on the Z scale ---
+[1] 2.7500 1.9811
+--- information fraction / nominal p ---
+     timing      z p_nominal
+[1,]    0.5 2.7500    0.0030
+[2,]    1.0 1.9811    0.0238
+information at analysis 1 / 2: 0.504 1.009</pre>
+<div class="note">关于多重性，这一章只说一句：<strong>α 消耗函数就是多重性的账本</strong>。它把总 α = 0.025 按预设规则分摊到各次分析（这里用 Hwang-Shih-DeCani，γ = −4，属于"保守型"，前期少花），因此无论你看几次，整体 I 类错误仍是 0.025。反过来，<em>临时起意</em>多看一次数据而没有事前 spending 函数，账本就崩了——这也是为什么 SAP 里的期中计划必须先于数据锁定。多个终点、多个剂量组的多重性是另一套工具（如 <code class="inl">graph 化的 α 传播</code>，见 <code class="inl">gsDesign</code> 的 <code class="inl">gsDesignGG</code> 相关功能与 gMCP 包）。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 6：为什么最终分析的名义 p 值边界是 0.0238 而不是 0.025？</p>
+<button class="quiz-opt" data-opt="A">因为这是单侧设计，单侧就要用更小的 α</button>
+<button class="quiz-opt" data-opt="B">因为期中分析已消耗了 0.003 的 α，为保证总体 I 类错误仍为 0.025，最终边界必须相应收紧</button>
+<button class="quiz-opt" data-opt="C">因为 power 设为 90% 而非 80%</button>
+<div class="quiz-exp">选 B。α 消耗 0.003（期中）+ 0.022（最终）= 0.025。A 混淆了单双侧：单侧 0.025 本身就是这个设计的总预算，与是否分期无关；固定设计的单侧 0.025 边界正是 Z = 1.96 / p = 0.025。C 无关：power 影响的是<strong>样本量</strong>（这里是固定设计的 1.009 倍），不是边界的分配。</div>
+</div>
+
+<h2 id="s3-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://cran.r-project.org/package=mmrm">mmrm（CRAN 官方页）</a> — 主参考；含全部协方差结构、Satterthwaite/KR、emmeans 集成与"从 SAS 迁移"的说明。读它的 vignette《introduction》与《covariance》 <span class="tag">进阶</span></li>
+<li><a href="https://rpkgs.datanovia.com/survminer/">survminer 文档站</a> — <code class="inl">ggsurvplot()</code> 全部参数图解，配色、风险表、p 值标注一次讲清，最适合照着改自己的 KM 图 <span class="tag">入门</span></li>
+<li><a href="https://cran.r-project.org/package=flexsurv">flexsurv（CRAN 官方页）</a> — 参数化生存模型（Weibull、piecewise-exponential、多状态），需要外推长期生存或做卫生经济学建模时的主力 <span class="tag">进阶</span></li>
+<li><a href="https://keaven.github.io/gsDesign/">gsDesign 官方站点</a> — 成组序贯设计、α 消耗函数、样本量反推与图形化边界；配套书稿《gsDesign Bookdown》 <span class="tag">进阶</span></li>
+<li><a href="https://hbiostat.org/rms/">Frank Harrell, Regression Modeling Strategies（RMS）</a> — Cox 模型、比例风险检验、预测模型验证的经典教材；配套 <code class="inl">rms</code> 包 <span class="tag">参考</span></li>
+<li>本地精读：<a href="../mmrm"><code class="inl">../mmrm</code> —— MMRM 深入理解指南</a> — 从矩阵基础、协方差结构（UN/AR(1)/CS/Toeplitz）、MAR 假设到 REML 与 Kenward–Roger、ICH E9(R1) 估计目标与 SAS/R 双实现对照，正好补齐本章 3.5 的理论底座 <span class="tag">参考</span></li>
+<li>本地精读：<a href="../lmm"><code class="inl">../lmm</code> —— 线性混合模型实战笔记</a> — 随机截距/随机斜率、方差成分解读与交互实验室，是 3.6 节 lmer 部分的延伸阅读 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s3-ex">本章练习</h2>
+<ol>
+<li>（易）用 <code class="inl">lung</code> 把 KM 按 ECOG 体能状态分层：造 <code class="inl">event</code> 列，取 <code class="inl">ph.ecog %in% c(0, 1)</code> 的子集（<code class="inl">ph.ecog = 3</code> 只有 1 例，画出来没有意义），做 <code class="inl">factor</code> 后 <code class="inl">survfit()</code> + <code class="inl">survdiff()</code>。<em>参考结果（已实跑）：ECOG 0 组 n=63、中位 394 天（348–574）；ECOG 1 组 n=113、中位 306 天（268–429）；log-rank Chisq = 3.5，p = 0.06。</em></li>
+<li>（中）在 3.4 的 Cox 模型里加交互项 <code class="inl">sex * ph.ecog</code>，用 <code class="inl">anova(fit0, fit1)</code> 做似然比检验，并解释"加了交互项后主效应系数的含义变了"。<em>参考结果（已实跑）：交互项 exp(coef) = 1.178、p = 0.51；LR 检验 Chisq = 0.436、Df = 1、p = 0.509 ⇒ 无证据支持交互。注意此时 <code class="inl">sex</code> 的系数（−0.730）已不再是"总体性别效应"，而是 <strong>ph.ecog = 0 时</strong>的性别效应。</em></li>
+<li>（难）把 3.5 的 MMRM 换成不同协方差结构，用 <strong>ML</strong>（<code class="inl">reml = FALSE</code>）比较 AIC/BIC，并检查 Week 12 的校正差是否稳健：<code class="inl">us()</code> / <code class="inl">cs()</code> / <code class="inl">ar1()</code> / <code class="inl">toeph()</code>。<em>参考结果（已实跑）：AIC 分别 1265.90 / 1263.42 / 1280.07 / 1265.71，BIC 1280.19 / 1268.19 / 1284.83 / 1277.62 ⇒ CS 在本数据上最优（参数少、拟合几乎不差）；Week 12 校正差在 8.80–8.96 之间，结论对协方差结构不敏感。</em>想一想：为什么 REML 下不能这样比 AIC？（提示：REML 似然是"固定效应被投影掉"之后的似然，只在<strong>固定效应完全相同</strong>时可比。）</li>
+</ol>
+<p class="lede">下一章：统计结果怎么变成能递交的表格与图——rtables / flextable / Quarto 搭一条 TLF 流水线，把本章的 KM 表、Cox 表、MMRM 表一次性产出并双编程比对（第 4 章）。</p>
+</article></main>
+<aside class="toc">
+<a href="#s3-1">3.1 ggplot2 图层语法</a>
+<a href="#s3-2">3.2 Surv 对象</a>
+<a href="#s3-3">3.3 KM 与 log-rank</a>
+<a href="#s3-4">3.4 Cox 比例风险</a>
+<a href="#s3-5">3.5 MMRM 与 mmrm 包</a>
+<a href="#s3-6">3.6 lme4 对照</a>
+<a href="#s3-7">3.7 卡方与 CMH</a>
+<a href="#s3-8">3.8 森林图</a>
+<a href="#s3-9">3.9 期中分析边界</a>
+<a href="#s3-res">章末资源</a>
+<a href="#s3-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

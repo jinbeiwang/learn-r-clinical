@@ -1,0 +1,413 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 6 章 R 包开发 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a class="on" href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 6 章</div>
+<div class="chapnum">06</div>
+<h1>R 包开发：把推导变成资产</h1>
+<p class="lede">散落在脚本里的 derive_* 函数只是"你写得出来"；打成包，它才成为"团队用得上、审计查得清"的资产。本章用一个真跑通、测试全绿的迷你包 clinderive，带你走完从 create_package 到安装分发的全链。</p>
+
+<h2 id="s6-1">6.1 包 = 复用与验证单元</h2>
+<p>在 SAS 世界，你的推导资产通常长这样：autocall 宏库或公司标准宏，配一套受控的安装环境。到了 R 世界，对应物不是"一堆 .R 文件"，而是<strong>包（package）</strong>——代码、文档、测试、版本号打包成一个整体：</p>
+<ul>
+<li><strong>复用</strong>：一次安装、处处 <code class="inl">library()</code>；版本号与变更记录（NEWS）让"这张表用的是哪版函数"有据可查。</li>
+<li><strong>文档</strong>：roxygen 注释自动生成 <code class="inl">?derive_age</code> 帮助页，取代口口相传的"程序头注释规范"。</li>
+<li><strong>验证</strong>：testthat 测试随每次改动全量回归；<code class="inl">R CMD check</code> / CI 的全绿记录就是验证证据链的一环。</li>
+</ul>
+<div class="note">pharma 视角：R 世界里验证的最小单元不是单个脚本，而是<strong>"包 + 测试 + 锁环境"</strong>（呼应第 0 章 0.6 与 <a href="ch5-advanced.html">第 5 章</a>的 valtools 工作流）。三者分工明确：版本化的包管住"函数是什么"，testthat 管住"函数对不对"，renv 管住"当时是在哪套环境里对的"。递交审评时被问到复现性，这三样缺一不可。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>把 R 包当"加强版 autocall 宏库"，觉得建个文件夹丢几个 .R 文件、用 <code class="inl">source()</code> 挨个加载就行。<code class="inl">source()</code> 没有命名空间（函数互相覆盖你毫无察觉）、没有依赖声明、没有测试、没有版本。审计问"这张 ADSL 表用的哪个版本的 derive_age"，一堆脚本答不上来，包能。</div>
+
+<h2 id="s6-2">6.2 工作流全链：从 create_package 到 install</h2>
+<p>开发一个包的日常循环只有五步：<strong>建骨架 → 写函数 → 生成文档 → 加载调试 → 跑测试</strong>。usethis 负责把每一步的样板文件都替你写好。先建包：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 建包骨架：DESCRIPTION / NAMESPACE / R/ 一次到位
+usethis::create_package("clinderive")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+v Creating 'C:/.../tmp_ch6/clinderive/'.
+v Setting active project to "C:/.../tmp_ch6/clinderive".
+v Creating 'R/'.
+v Writing 'DESCRIPTION'.
+Package: clinderive
+Title: What the Package Does (One Line, Title Case)
+Version: 0.0.0.9000
+Authors@R (parsed):
+    * First Last &lt;first.last@example.com&gt; [aut, cre]
+Description: What the package does (one paragraph).
+License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
+    license
+Config/roxygen2/version: 8.1.0
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+v Writing 'NAMESPACE'.
+v Setting active project to "&lt;no active project&gt;".</pre>
+<p>接着把 DESCRIPTION 从模板改成正式内容。DESCRIPTION 是包的"身份证 + 依赖清单"，每个字段都值得你亲手写一遍：</p>
+<pre class="code" style="white-space:pre"><code class="lang-ini">Package: clinderive
+Title: Clinical Derivation Helpers for ADaM-Style Variables
+Version: 0.1.0
+Authors@R:
+    person("Beijing", "Wang", , "bwang@example.com", role = c("aut", "cre"))
+Description: Provides small, well-tested derivation functions for clinical
+    programming, such as integer age from birth and reference dates.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.1.0
+Imports:
+    lubridate
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">Package / Title / Version</code>：包名全小写；标题一行、实词首字母大写；版本号遵循"major.minor.patch"，开发中的包常以 <code class="inl">0.0.0.9000</code> 起步（9000 段表示开发版）。<em>升级包 = 升版本号</em>，这是资产化的第一纪律。</li>
+<li><code class="inl">Authors@R</code>：用 <code class="inl">person()</code> 声明作者与维护者，<code class="inl">cre</code>（maintainer）必须有——出了质量问题审计找谁，就写在这里。</li>
+<li><code class="inl">Imports: lubridate</code>：函数体内真正调用的依赖写 Imports，安装 clinderive 时会强制装上（详见 6.6）。</li>
+<li><code class="inl">Suggests: testthat / Config/testthat/edition: 3</code>：只有测试和 vignette 用到的包写 Suggests；edition 3 启用 waldo 比对，断言更严格。</li>
+<li><code class="inl">Roxygen: list(markdown = TRUE)</code>：允许在 roxygen 注释里写 Markdown（如 <code class="inl">[base::Date]</code> 自动生成帮助页链接）。</li>
+</ol></div>
+<div class="note">日常也可以不手改 DESCRIPTION：<code class="inl">usethis::use_package("lubridate")</code> 写入 Imports，<code class="inl">usethis::use_testthat()</code> 搭好 tests/ 骨架并写入 Suggests，<code class="inl">usethis::use_mit_license()</code> 生成 LICENSE 文件。usethis 的 <code class="inl">use_*</code> 家族就是"包开发的标准操作规程"。</div>
+<p>然后写第一个推导函数 <code class="inl">R/derive_age.R</code>——注意函数上方的 <code class="inl">#'</code> 注释（roxygen），它是文档的源头（6.3 详解）：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">#' Derive integer age from birth date and reference date
+#'
+#' Computes the completed (integer) age at the reference date, using
+#' [lubridate::interval()] so that leap days and the "birthday not yet
+#' reached" boundary are handled correctly. Vectorised over `brth` and
+#' `ref`; `NA` in either input yields `NA` in the output.
+#'
+#' @param brth A [base::Date] vector of birth dates.
+#' @param ref  A [base::Date] vector of reference dates (e.g. TRTSDT or cutoff).
+#'
+#' @return An integer vector of completed ages, the same length as the
+#'   longer of `brth` and `ref`.
+#' @export
+#'
+#' @examples
+#' derive_age(as.Date("2000-02-29"), as.Date("2025-02-28"))  # 24
+#' derive_age(as.Date("2000-06-16"), as.Date("2025-06-15"))  # 24, birthday not yet reached
+#' derive_age(as.Date(NA), as.Date("2025-01-01"))            # NA
+derive_age <- function(brth, ref) {
+  if (!inherits(brth, "Date") || !inherits(ref, "Date")) {
+    stop("`brth` and `ref` must both be Date vectors.", call. = FALSE)
+  }
+  iv <- lubridate::interval(brth, ref)
+  age <- floor(lubridate::time_length(iv, "year"))
+  as.integer(age)
+}</code></pre>
+<p>写完函数，跑 roxygen 生成文档与 NAMESPACE：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 扫描 R/ 下的 #' 注释 -> man/*.Rd + NAMESPACE
+roxygen2::roxygenise("clinderive")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+i Loading clinderive
+Writing 'NAMESPACE'
+Writing 'derive_age.Rd'</pre>
+<p>调试阶段用 <code class="inl">pkgload::load_all()</code> 直接加载源码——不用每次改一行就重装一遍：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">pkgload::load_all("clinderive", quiet = TRUE)
+cat("derive_age(as.Date('2000-02-29'), as.Date('2025-02-28')) =",
+    derive_age(as.Date("2000-02-29"), as.Date("2025-02-28")), "\n")
+
+# 跑全部测试（等价于 devtools::test()）
+testthat::test_local("clinderive")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+derive_age(as.Date('2000-02-29'), as.Date('2025-02-28')) = 24
+v | F W  S  OK | Context
+v |          7 | derive_age
+
+== Results =====================================================================
+[ FAIL 0 | WARN 0 | SKIP 0 | PASS 7 ]</pre>
+<p>功能稳定后再正式安装——安装是"发布"动作，把源码编译成库里的正式包：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 从源码目录安装到指定库（本地演示装进 mini-lib）
+dir.create("mini-lib", showWarnings = FALSE)
+install.packages("clinderive", repos = NULL, type = "source", lib = "mini-lib")
+
+# 装好后像任何 CRAN 包一样加载使用
+library(clinderive, lib.loc = "mini-lib")
+cat("installed version:", as.character(packageVersion("clinderive", lib.loc = "mini-lib")), "\n")
+cat("derive_age(2000-06-16 -> 2025-06-15) =", derive_age(as.Date("2000-06-16"), as.Date("2025-06-15")), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+* installing *source* package 'clinderive' ...
+** this is package 'clinderive' version '0.1.0'
+** using staged installation
+** R
+** byte-compile and prepare package for lazy loading
+** help
+*** installing help indices
+** building package indices
+** testing if installed package can be loaded from temporary location
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (clinderive)
+installed version: 0.1.0
+derive_age(2000-06-16 -> 2025-06-15) = 24</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">create_package()</code>：只生成 DESCRIPTION、NAMESPACE 和 R/ 三件套，最小可开发状态。</li>
+<li><code class="inl">roxygenise()</code>：把 <code class="inl">@export</code> 翻译成 NAMESPACE 里的 <code class="inl">export(derive_age)</code>，把整段 <code class="inl">#'</code> 注释翻译成 man/derive_age.Rd 帮助页。两个文件都是生成物，<em>永远不要手改</em>。</li>
+<li><code class="inl">load_all()</code>：模拟"安装 + 加载"——源码即时生效，连未导出的内部函数都能调试。</li>
+<li><code class="inl">test_local()</code>：在包目录跑 tests/testthat/ 全部测试；FAIL 0 才算改完。</li>
+<li><code class="inl">install.packages(repos = NULL, type = "source")</code>：从本地源码目录安装的固定写法；日常开发中它被 devtools/pkgload 工作流取代，只在发版时用。</li>
+</ol></div>
+<div class="note">你常看到的 <code class="inl">devtools::document() / load_all() / test()</code> 只是转发器，底层分别是 roxygen2、pkgload、testthat。本机没装 devtools 也完全不影响——直接用这三件套即可，报错信息还更干净。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：pkgload::load_all()（即 devtools::load_all()）与 library() 的区别是什么？</p>
+<button class="quiz-opt" data-opt="A">load_all() 跳过代码解析，所以加载速度比 library() 快一个量级</button>
+<button class="quiz-opt" data-opt="B">load_all() 直接加载源码目录、无需先安装包，且能访问未经 @export 导出的内部函数</button>
+<button class="quiz-opt" data-opt="C">library() 也能加载未安装的源码目录，只是需要额外参数</button>
+<button class="quiz-opt" data-opt="D">两者完全等价，只是包名不同的别名</button>
+<div class="quiz-exp">选 B。load_all() 为开发而设计：改完源码立刻生效，内部函数（NAMESPACE 未 export 的）也暴露在会话里方便调试；library() 只能加载已正式安装的包，且只暴露 export() 清单里的对象。发版给用户用的永远是安装后的版本，两者不可混谈。</div>
+</div>
+
+<h2 id="s6-3">6.3 roxygen 标签速查表</h2>
+<p>roxygen 注释就是写在函数头顶的 <code class="inl">#'</code> 行。六个核心标签覆盖日常 95% 的需求：</p>
+<table>
+<tr><th>标签</th><th>作用</th><th>生成到哪里</th></tr>
+<tr><td>首行描述（无标签）</td><td>函数标题，一句话说明"做什么"；空行后的段落是详细描述</td><td>Rd 的 title / description</td></tr>
+<tr><td><code class="inl">@param</code></td><td>逐个解释参数：类型、单位、NA 行为——临床函数的参数说明就是 mini-spec</td><td>Rd 的 arguments</td></tr>
+<tr><td><code class="inl">@return</code></td><td>返回值类型与长度；R CMD check 会检查缺失</td><td>Rd 的 value</td></tr>
+<tr><td><code class="inl">@export</code></td><td>把函数写入 NAMESPACE，用户才能 <code class="inl">clinderive::derive_age()</code>；不写 = 内部函数</td><td>NAMESPACE 的 export()</td></tr>
+<tr><td><code class="inl">@examples</code></td><td>可直接运行的示例；<code class="inl">R CMD check</code> 会真的执行它们，写错就红</td><td>Rd 的 examples</td></tr>
+<tr><td><code class="inl">@importFrom</code></td><td>声明"从某包只导入某函数"，如 <code class="inl">@importFrom lubridate interval</code>；NAMESPACE 里生成 importFrom()。也可以不用它、在函数体里写全 <code class="inl">lubridate::interval()</code>（clinderive 采用后者，依赖关系更显式）</td><td>NAMESPACE 的 importFrom()</td></tr>
+</table>
+<p>对照 6.2 里 derive_age.R 的真实文件头看一遍：首行是标题，<code class="inl">[lubridate::interval()]</code> 与 <code class="inl">[base::Date]</code> 因 <code class="inl">Roxygen: list(markdown = TRUE)</code> 自动变成帮助页超链接，<code class="inl">@param / @return / @export / @examples</code> 各司其职。<code class="inl">roxygenise()</code> 之后，<code class="inl">?derive_age</code> 就能看到与源码同步的帮助页。</p>
+<div class="pitfall"><strong>SAS 误区：</strong>把 roxygen 注释当"可写可不写的程序头注释"。在 R 包里它是<strong>唯一文档源</strong>：帮助页、NAMESPACE、pkgdown 网站全从它生成。改了函数签名却不改 <code class="inl">@param</code>，等于宏改了参数却没更新 spec——R CMD check 与代码审查都会抓出来。</div>
+
+<h2 id="s6-4">6.4 测试布局：tests/testthat/</h2>
+<p>testthat 的目录约定是固定的两件套：</p>
+<ul>
+<li><code class="inl">tests/testthat.R</code>：入口 runner，只有三行（<code class="inl">library(testthat); library(clinderive); test_check("clinderive")</code>），<code class="inl">R CMD check</code> 时自动执行；</li>
+<li><code class="inl">tests/testthat/test-*.R</code>：真正的测试文件，命名以 <code class="inl">test-</code> 开头，惯例是<strong>一个源函数对应一个测试文件</strong>——R/derive_age.R ↔ test-derive_age.R。</li>
+</ul>
+<p>clinderive 的测试文件全文如下（本章实跑所用，7 条断言全绿）：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">test_that("derive_age returns completed integer age", {
+  expect_equal(derive_age(as.Date("2000-01-01"), as.Date("2025-06-15")), 25L)
+  # 生日未到：应返回 24 而不是 25
+  expect_equal(derive_age(as.Date("2000-06-16"), as.Date("2025-06-15")), 24L)
+  # 闰日出生
+  expect_equal(derive_age(as.Date("2000-02-29"), as.Date("2024-02-29")), 24L)
+})
+
+test_that("derive_age propagates NA", {
+  expect_true(is.na(derive_age(as.Date(NA), as.Date("2025-01-01"))))
+  expect_true(is.na(derive_age(as.Date("2000-01-01"), as.Date(NA))))
+})
+
+test_that("derive_age is vectorised", {
+  brth <- as.Date(c("2000-01-01", "1990-12-31"))
+  ref  <- as.Date(c("2025-06-15", "2025-06-15"))
+  expect_equal(derive_age(brth, ref), c(25L, 34L))
+})
+
+test_that("derive_age rejects non-Date input", {
+  expect_error(derive_age("2000-01-01", as.Date("2025-01-01")),
+               "must both be Date")
+})</code></pre>
+<p>运行方式：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 开发中：跑包内全部测试（会自动 load_all）
+testthat::test_local("clinderive")
+
+# 只想跑单个文件：test_file 不会自动加载包，需先 load_all
+pkgload::load_all("clinderive", quiet = TRUE)
+testthat::test_file("clinderive/tests/testthat/test-derive_age.R")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+v | F W  S  OK | Context
+v |          7 | derive_age
+
+== Results =====================================================================
+[ FAIL 0 | WARN 0 | SKIP 0 | PASS 7 ]</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">test_that("描述", { ... })</code>：一个测试块 = 一条需求。描述用人话写，失败时直接出现在报告里——它就是测试用例标题。</li>
+<li>边界断言：<code class="inl">25L</code> 而不是 <code class="inl">25</code>——edition 3 用 waldo 比对，整数型与双精度型不匹配也算失败。"生日未到返回 24"和"闰日 2000-02-29"正是 SAS 程序员用 <code class="inl">intck('year', ...)</code> 时最容易踩的两个边界。</li>
+<li><code class="inl">expect_true(is.na(...))</code>：NA 传播是临床推导函数的硬需求（BRTHDT 缺失 → AGE 必须缺失而非报错或 0）。</li>
+<li><code class="inl">expect_error(..., "must both be Date")</code>：不只测"对的时候对"，还要测"错的时候错得体面"——错误信息也是接口的一部分。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>"跑一遍、肉眼扫 log、没有 ERROR 就算过"。人眼扫 log 是一次性的，testthat 断言是永久的：每次 load_all、每次 check、每次 CI 都自动重跑全部用例。把它理解成"自动化的 PROC COMPARE + 断言日志"，双编程的 QC 心智可以直接平移过来。</div>
+
+<h2 id="s6-5">6.5 vignette：给包配一篇"使用说明书"</h2>
+<p>帮助页（?derive_age）回答"这个函数怎么用"，vignette 回答"<strong>这个包解决什么问题、典型工作流长什么样</strong>"——相当于包的 SOP 附培训材料。<code class="inl">usethis::use_vignette("clinderive")</code> 会在 vignettes/ 下生成骨架并把 knitr、rmarkdown 写进 Suggests。clinderive 的 vignette 骨架如下：</p>
+<pre class="code" style="white-space:pre"><code class="lang-yaml">---
+title: "clinderive：临床推导函数入门"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{clinderive：临床推导函数入门}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---</code></pre>
+<pre class="code" style="white-space:pre"><code class="lang-r">```{r setup}
+library(clinderive)
+```
+
+整数年龄推导以"生日是否已到"为边界，NA 自动传播：
+
+```{r demo}
+derive_age(as.Date("2000-02-29"), as.Date("2025-02-28"))  # 闰日出生，生日未到 -> 24
+derive_age(as.Date(c("2000-01-01", "1990-12-31")),
+           as.Date(c("2025-06-15", "2025-06-15")))        # 向量化 -> 25, 34
+```</code></pre>
+<div class="note">vignette 是"活文档"：R CMD build / check 时会真实渲染并执行其中的每个 chunk，写错的示例会让 check 变红——这正合我们心意，文档里的代码永远与当前版本一致。渲染由 knitr + rmarkdown 完成（见<a href="ch4-tfl.html">第 4 章</a>）。</div>
+
+<h2 id="s6-6">6.6 依赖与分发：Imports、Suggests 与内部仓库</h2>
+<p>依赖声明写在 DESCRIPTION 里，两个字段的选择直接影响安装行为：</p>
+<table>
+<tr><th>字段</th><th>放什么</th><th>安装/加载行为</th><th>clinderive 里的例子</th></tr>
+<tr><td><code class="inl">Imports</code></td><td>函数体内真正调用的包（<code class="inl">::</code> 或 @importFrom）</td><td>安装时强制安装；缺失则装不上</td><td>lubridate——derive_age 没它不能活</td></tr>
+<tr><td><code class="inl">Suggests</code></td><td>仅测试、vignette、示例或条件分支用到的包</td><td>不强制安装；check 时缺失只会 SKIP</td><td>testthat、knitr、rmarkdown</td></tr>
+<tr><td><code class="inl">Depends</code></td><td>几乎不用；仅剩声明 R 版本下限一种正当用途</td><td>加载包时连带 attach，污染搜索路径</td><td>如 <code class="inl">R (>= 4.3)</code></td></tr>
+</table>
+<p>原则：<strong>能写 Suggests 就不写 Imports</strong>。每多一个 Imports，安装链就多一环失败可能，验证范围也大一圈——这与 SAS 里"少挂几个 autocall 库"是同一纪律。</p>
+<p><strong>renv 与包管理是互补，不是二选一</strong>：包回答"函数资产如何版本化、复用"；renv（第 0 章 0.3）回答"某次分析在哪套环境版本里跑"。pharma 的常见组合拳是——clinderive 0.1.0 发布到内部仓库，各试验项目的 renv.lock 同时锁住 clinderive 及其全部依赖的版本；函数升级靠发新版本号，绝不原地偷改。</p>
+<p>包建好了，怎么发给同事？三条主流路线：</p>
+<ul>
+<li><strong>Posit Package Manager</strong>：企业级仓库/CRAN 镜像，支持 Windows/Linux 二进制分发、按日期快照（<code class="inl">.../cran/2025-06-01</code> 这样的 URL 让"当时的环境"可回放），是内部包平台的常见底座。</li>
+<li><strong>drat</strong>：轻量自建仓库——把包 tarball 用 <code class="inl">drat::insertPackage()</code> 丢进一个仓库目录（内网服务器或 GitHub Pages），用户 <code class="inl">options(repos = ...)</code> 后即可 <code class="inl">install.packages()</code>。适合小团队起步。</li>
+<li><strong>r-universe</strong>：GitHub push 触发云端自动构建，每个组织一个 universe。pharmaverse 生态（admiral 等 CDISC 推导包）就发布在 <a href="https://pharmaverse.r-universe.dev/packages">pharmaverse.r-universe.dev</a>，安装只需把 repos 指过去。</li>
+</ul>
+
+<h2 id="s6-7">6.7 实战迷你包 clinderive：完整档案</h2>
+<p>把本章全部内容收拢成一份完整档案。以下文件树与四个文件均为本章实跑验证过的真实内容（R 4.5.0，roxygen2 8.1.0，testthat 3.2.3，lubridate 1.9.4）：</p>
+<pre class="out" style="white-space:pre">clinderive/
+├── DESCRIPTION            # 身份证 + 依赖清单
+├── NAMESPACE              # 导出/导入清单（roxygen 生成，勿手改）
+├── R/
+│   └── derive_age.R       # 函数源码 + roxygen 注释
+├── man/
+│   └── derive_age.Rd      # 帮助页（roxygen 生成）
+└── tests/
+    ├── testthat.R         # check 入口 runner
+    └── testthat/
+        └── test-derive_age.R   # 7 条断言</pre>
+<p><strong>文件 1/4：DESCRIPTION</strong></p>
+<pre class="code" style="white-space:pre"><code class="lang-ini">Package: clinderive
+Title: Clinical Derivation Helpers for ADaM-Style Variables
+Version: 0.1.0
+Authors@R:
+    person("Beijing", "Wang", , "bwang@example.com", role = c("aut", "cre"))
+Description: Provides small, well-tested derivation functions for clinical
+    programming, such as integer age from birth and reference dates.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.1.0
+Imports:
+    lubridate
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3</code></pre>
+<p><strong>文件 2/4：NAMESPACE</strong>（roxygenise() 生成）</p>
+<pre class="code" style="white-space:pre"><code class="lang-ini"># Generated by roxygen2: do not edit by hand
+
+export(derive_age)</code></pre>
+<p><strong>文件 3/4：R/derive_age.R</strong></p>
+<pre class="code" style="white-space:pre"><code class="lang-r">#' Derive integer age from birth date and reference date
+#'
+#' Computes the completed (integer) age at the reference date, using
+#' [lubridate::interval()] so that leap days and the "birthday not yet
+#' reached" boundary are handled correctly. Vectorised over `brth` and
+#' `ref`; `NA` in either input yields `NA` in the output.
+#'
+#' @param brth A [base::Date] vector of birth dates.
+#' @param ref  A [base::Date] vector of reference dates (e.g. TRTSDT or cutoff).
+#'
+#' @return An integer vector of completed ages, the same length as the
+#'   longer of `brth` and `ref`.
+#' @export
+#'
+#' @examples
+#' derive_age(as.Date("2000-02-29"), as.Date("2025-02-28"))  # 24
+#' derive_age(as.Date("2000-06-16"), as.Date("2025-06-15"))  # 24, birthday not yet reached
+#' derive_age(as.Date(NA), as.Date("2025-01-01"))            # NA
+derive_age <- function(brth, ref) {
+  if (!inherits(brth, "Date") || !inherits(ref, "Date")) {
+    stop("`brth` and `ref` must both be Date vectors.", call. = FALSE)
+  }
+  iv <- lubridate::interval(brth, ref)
+  age <- floor(lubridate::time_length(iv, "year"))
+  as.integer(age)
+}</code></pre>
+<p><strong>文件 4/4：tests/testthat/test-derive_age.R</strong></p>
+<pre class="code" style="white-space:pre"><code class="lang-r">test_that("derive_age returns completed integer age", {
+  expect_equal(derive_age(as.Date("2000-01-01"), as.Date("2025-06-15")), 25L)
+  # 生日未到：应返回 24 而不是 25
+  expect_equal(derive_age(as.Date("2000-06-16"), as.Date("2025-06-15")), 24L)
+  # 闰日出生
+  expect_equal(derive_age(as.Date("2000-02-29"), as.Date("2024-02-29")), 24L)
+})
+
+test_that("derive_age propagates NA", {
+  expect_true(is.na(derive_age(as.Date(NA), as.Date("2025-01-01"))))
+  expect_true(is.na(derive_age(as.Date("2000-01-01"), as.Date(NA))))
+})
+
+test_that("derive_age is vectorised", {
+  brth <- as.Date(c("2000-01-01", "1990-12-31"))
+  ref  <- as.Date(c("2025-06-15", "2025-06-15"))
+  expect_equal(derive_age(brth, ref), c(25L, 34L))
+})
+
+test_that("derive_age rejects non-Date input", {
+  expect_error(derive_age("2000-01-01", as.Date("2025-01-01")),
+               "must both be Date")
+})</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>入参校验：<code class="inl">inherits(brth, "Date")</code> 挡住字符型日期——SAS 里日期是数值，R 里 Date 是带 class 的数值，类型错误静默传下去比报错可怕得多。</li>
+<li><code class="inl">lubridate::interval(brth, ref)</code>：构造时间区间，闰日、月末边界全部由 lubridate 处理；任一输入为 NA，区间即 NA，结果自然 NA——不需要写一行 <code class="inl">if (is.na(...))</code>。</li>
+<li><code class="inl">floor(time_length(iv, "year"))</code>：按 365.25 天折算年数后向下取整，得到"满岁"；生日未到时不会进位。</li>
+<li><code class="inl">as.integer(age)</code>：统一返回整数型，与测试里的 <code class="inl">25L</code> 严格一致——返回类型也是接口契约。</li>
+</ol></div>
+<div class="note">演示包为聚焦主线省略了 LICENSE 文件与 NEWS.md：正式项目请补上 <code class="inl">usethis::use_mit_license()</code> 与 <code class="inl">usethis::use_news_md()</code>，否则 R CMD check 会给出 NOTE/WARNING。内部包还常加 <code class="inl">use_readme_rmd()</code> 与 CI 徽章（见练习 3）。</div>
+
+<h2 id="s6-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://r-pkgs.org">R Packages (Hadley Wickham &amp; Jenny Bryan)</a> — 包开发系统主线教材，免费在线；本章工作流即其精简版 <span class="tag">入门主线</span></li>
+<li><a href="https://usethis.r-lib.org">usethis 官方文档</a> — use_* 自动化命令速查，建包/加测试/加 vignette 的标准动作 <span class="tag">入门</span></li>
+<li><a href="https://roxygen2.r-lib.org">roxygen2 官方文档</a> — 全部标签语法与 NAMESPACE 生成规则的参考手册 <span class="tag">参考</span></li>
+<li><a href="https://pharmaverse.r-universe.dev/packages">pharmaverse r-universe</a> — admiral 等临床推导包的发布平台，看真实 pharma 包长什么样 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s6-ex">本章练习</h2>
+<ol>
+<li>（易）给 clinderive 加第二个函数 <code class="inl">derive_sex(sexcd)</code>：把 SDTM 的 <code class="inl">"M"/"F"</code> 映射为 <code class="inl">"Male"/"Female"</code>，其他值（含 NA）返回 NA；配 roxygen 注释与 tests/testthat/test-derive_sex.R，<code class="inl">test_local()</code> 全绿后重新 <code class="inl">roxygenise()</code>。</li>
+<li>（中）按 6.5 骨架写出 vignettes/clinderive.Rmd：讲清整数年龄的边界规则，至少嵌入两个真实可跑的 chunk（含闰日与向量化示例），用 <code class="inl">rmarkdown::render()</code> 渲染通过。</li>
+<li>（难）用 <code class="inl">usethis::use_github_action("check-standard")</code> 给包加 GitHub Actions 的 R CMD check 工作流，push 后让徽章全绿；思考：这条 CI 记录在你的验证报告（如 valtools 的 release 证据，见第 5 章）里应该放在哪一节。</li>
+</ol>
+<p class="lede">下一章：Shiny 与交互——把推导逻辑与 TFL 变成临床团队能自己点、自己查的交互式应用。</p>
+</article></main>
+<aside class="toc">
+<a href="#s6-1">6.1 包=复用与验证单元</a>
+<a href="#s6-2">6.2 工作流全链</a>
+<a href="#s6-3">6.3 roxygen 标签表</a>
+<a href="#s6-4">6.4 测试布局</a>
+<a href="#s6-5">6.5 vignette</a>
+<a href="#s6-6">6.6 依赖与分发</a>
+<a href="#s6-7">6.7 实战迷你包</a>
+<a href="#s6-res">章末资源</a>
+<a href="#s6-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

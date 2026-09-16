@@ -1,0 +1,5 @@
+si <- sessionInfo()
+cat('R version:', R.version.string, '\n')
+cat('Platform:', R.version$platform, '\n')
+cat('Attached base:', paste(si$basePkgs, collapse = ', '), '\n')
+cat('Other attached:', paste(names(si$otherPkgs), collapse = ', '), '\n')

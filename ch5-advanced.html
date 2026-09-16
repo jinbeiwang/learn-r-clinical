@@ -1,0 +1,352 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 5 章 进阶 R 与工程化 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a class="on" href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 第 5 章</div>
+<div class="chapnum">05</div>
+<h1>进阶 R 与工程化：GxP 级代码</h1>
+<p class="lede">SAS 老兵不怕写代码，怕的是写出"别人不敢审计"的代码。本章把 R 打磨成 GxP 级：函数式编程、作用域、S3、性能、错误与日志、单元测试、CI、验证框架、评审清单——九步走完，你的 R 代码就有资格进递交证据链。</p>
+
+<h2 id="s5-1">5.1 函数式编程：purrr::map 家族</h2>
+<p>处理"一批数据集"，你的 SAS 肌肉记忆是 <code class="inl">%macro</code> + <code class="inl">%do</code>；R 的答案是函数式编程：函数是一等公民，可以像变量一样装进列表、当参数传递。<code class="inl">purrr::map</code> 家族就是类型安全、管道友好的批量迭代器：<code class="inl">map</code> 永远返回列表；确定返回类型时用 <code class="inl">map_lgl / map_chr / map_dbl</code>；两个输入用 <code class="inl">map2</code>、多个用 <code class="inl">pmap</code>；结果列表用 <code class="inl">list_rbind()</code> 纵向拼表。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">suppressPackageStartupMessages({ library(dplyr); library(purrr) })
+
+# 三个中心的 ADSL 分片（列表 of data.frame）
+adsl_by_site &lt;- list(
+  site01 = tibble(site = "01", age = c(63, 71, 58), sex = c("M", "F", "F")),
+  site02 = tibble(site = "02", age = c(45, 52),     sex = c("M", "M")),
+  site03 = tibble(site = "03", age = c(66, 48, 55, 61), sex = c("F", "M", "F", "M"))
+)
+
+# SAS 思路：%do 遍历中心 + proc means；R：一个 map 搞定
+summ &lt;- adsl_by_site |&gt;
+  map(\(df) df |&gt; summarise(n = n(), mean_age = round(mean(age), 1), .by = site))
+
+list_rbind(summ)
+
+# 匿名函数：R 4.1+ 的 \(x) 简写，等价于 function(x)
+map_dbl(1:4, \(x) x * 2)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+# A tibble: 3 x 3
+  site      n mean_age
+  &lt;chr&gt; &lt;int&gt;    &lt;dbl&gt;
+1 01        3     64  
+2 02        2     48.5
+3 03        4     57.5
+[1] 2 4 6 8</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>三个 tibble 挂在一个列表里：相当于 SAS 的三张分中心数据集，但不必维护 ads1/ads2/ads3 这类名字。</li>
+<li><code class="inl">\(df)</code> 是 R 4.1+ 的匿名函数简写，等价于 <code class="inl">function(df)</code>；<code class="inl">map</code> 把它逐一施加到列表每个元素，返回新列表。</li>
+<li><code class="inl">summarise(..., .by = site)</code> 的 <code class="inl">.by</code> 是 dplyr 1.1+ 的临时分组，心智同 <code class="inl">PROC MEANS</code> 的 class。</li>
+<li><code class="inl">list_rbind()</code> 把结果列表纵向拼成一张表（已弃用的 <code class="inl">map_dfr</code> 的后继者），相当于 set 合并。</li>
+<li><code class="inl">map_dbl(1:4, \(x) x * 2)</code>：已知返回类型就用 map_dbl/map_chr，直接拿到原子向量而不是列表。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>宏循环的三大坑——%do 索引泄漏进全局符号表、&amp; 宏变量解析时机、忘写 %local 导致撞名——在 map 里统统不存在：匿名函数的参数天然局部，跑完不留任何状态。反过来，如果你在 R 里手写 for 循环、还得靠 <code class="inl">&lt;&lt;-</code> 累积结果，先停下来想想 map 是不是更干净。</div>
+
+<h2 id="s5-2">5.2 环境与作用域：闭包</h2>
+<p>R 的每个函数在<em>定义处</em>携带一个环境：调用时去哪儿找变量名，由它在哪定义决定，而不是在哪被调用——这叫<strong>词法作用域</strong>。闭包 = 函数 + 它的出生环境，是 R 里"保存私有状态"的正规姿势。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">make_counter &lt;- function() {
+  n &lt;- 0                       # n 被封在函数环境里
+  function() {                 # 返回的匿名函数记住出生地
+    n &lt;&lt;- n + 1                # &lt;&lt;- 只改父环境（闭包环境）的 n
+    n
+  }
+}
+
+c1 &lt;- make_counter()
+c2 &lt;- make_counter()           # 第二个闭包，互不干扰
+
+cat(c1(), c1(), c2(), c1(), "\n")
+cat("全局环境里没有 n：", exists("n", envir = globalenv()), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+1 2 1 3 
+全局环境里没有 n： FALSE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">n &lt;- 0</code> 住在 make_counter 本次调用创建的环境里，外界看不见也改不着。</li>
+<li>返回的匿名函数"记得"这个 n——这就是闭包；c1、c2 各自携带一份独立环境。</li>
+<li><code class="inl">&lt;&lt;-</code> 穿过函数自身环境去修改父环境（闭包环境）里的 n；若写 <code class="inl">&lt;-</code> 只会新建一个每次归零的局部变量。</li>
+<li>所以输出是 1 2 1 3：c1 数到三，c2 只数了一次，互不干扰。</li>
+<li>最后一行证明：全局环境里根本没有 n——状态被封在闭包里，而不是挂在全局符号表上。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>SAS 开放代码里 <code class="inl">%let</code> 默认全局，宏变量跨程序驻留，不 <code class="inl">%symdel</code> 就会被下一个程序撞名——很多 SAS 团队因此专门立了"宏变量命名前缀规范"。R 恰好相反：函数内变量天然局部，想污染全局反而要显式写 <code class="inl">&lt;&lt;-</code> 或 <code class="inl">assign(..., envir = globalenv())</code>。SAS 里要靠纪律防的"全局污染"，在 R 里由语言默认帮你挡住。</div>
+
+<h2 id="s5-3">5.3 S3 十分钟：给对象贴上类</h2>
+<p>S3 是 R 最轻量的对象系统：给对象贴一个 <code class="inl">class</code> 属性，<code class="inl">print</code>、<code class="inl">summary</code>、<code class="inl">format</code> 这类<strong>泛型函数</strong>就会按类自动分发到你写的方法。不需要正式的类定义文件，十分钟上手。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">x &lt;- list(study = "STUDY01", n = 128, vars = c("AGE", "SEX", "RACE"))
+class(x) &lt;- "adsl_report"      # 一行贴上 S3 类标签
+
+# 方法名 = 泛型.类名，print() 会自动分发过来
+print.adsl_report &lt;- function(x, ...) {
+  cat("== ADSL Report ==\n")
+  cat("Study:", x$study, "\n")
+  cat("N    :", x$n, "\n")
+  cat("Vars :", paste(x$vars, collapse = ", "), "\n")
+  invisible(x)
+}
+
+print(x)                       # 无需手工调用 print.adsl_report
+cat("class(x) =", class(x), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+== ADSL Report ==
+Study: STUDY01 
+N    : 128 
+Vars : AGE, SEX, RACE 
+class(x) = adsl_report</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>x 本来只是个普通 list；<code class="inl">class(x) &lt;- "adsl_report"</code> 贴上类标签，一行完成"类定义"。</li>
+<li>方法命名是硬约定：<strong>泛型.类名</strong>，即 <code class="inl">print.adsl_report</code>；在当前会话里定义完即生效，无需注册。</li>
+<li><code class="inl">print(x)</code> 触发内部的分发机制（UseMethod）：发现 class 是 adsl_report，就跳转执行 print.adsl_report——你永远不必显式调用方法名。</li>
+<li><code class="inl">invisible(x)</code> 是 print 方法的惯例返回：不可见地返回原对象，保持可链式使用。</li>
+<li><code class="inl">methods(print)</code> 能列出当前会话注册过的全部 print 方法；admiral、rtables 这些临床包全靠这套机制扩展。</li>
+</ol></div>
+<div class="note">别小看这十分钟：第 6 章开发包时，给团队的"分析结果对象"定一个类、配上 print/format 方法，QC 同事 print 一下就能看到结构化摘要——比把一坨裸 list 甩到日志里可审计得多。</div>
+
+<h2 id="s5-4">5.4 性能：向量化优先</h2>
+<p>SAS 用户写 R 最容易卡壳的地方：把 DATA step 的逐行思维直译成 for 循环。R 的循环每一步都经过解释器、还伴随"修改即复制"；向量化函数底层是编译好的 C 循环。让 100 万行数据说话：</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">set.seed(42)
+n &lt;- 1e6
+df &lt;- data.frame(age = rnorm(n))       # 100 万行"受试者年龄"
+m  &lt;- matrix(df$age, nrow = 1000)      # 1000 x 1000 矩阵，同一批数据
+
+cat("-- 反模式：逐行 for，每圈还重新抽列 --\n")
+print(system.time({ s1 &lt;- 0; for (i in seq_len(nrow(df))) s1 &lt;- s1 + df$age[i] }))
+
+cat("-- 向量化 sum() --\n")
+print(system.time({ s2 &lt;- sum(df$age) }))
+
+cat("-- 列和 colSums() --\n")
+print(system.time({ s3 &lt;- colSums(m) }))
+
+cat("三种算法结果一致:",
+    isTRUE(all.equal(s1, s2)),
+    isTRUE(all.equal(sum(s3), s2)), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+-- 反模式：逐行 for，每圈还重新抽列 --
+   user  system elapsed 
+   0.61    0.00    0.63 
+-- 向量化 sum() --
+   user  system elapsed 
+      0       0       0 
+-- 列和 colSums() --
+   user  system elapsed 
+      0       0       0 
+三种算法结果一致: TRUE TRUE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>for 循环里的 <code class="inl">df$age[i]</code> 每一圈都先重新抽一次列、再取第 i 个元素——双重反模式，花了 0.63 秒。</li>
+<li><code class="inl">sum(df$age)</code> 把整列一次性交给编译代码，elapsed 在秒级精度下显示为 0（实际毫秒级）。</li>
+<li><code class="inl">colSums(m)</code> 对 1000 列一次算完全部列和——"按组/按列"聚合几乎总有现成向量化函数（rowSums、colMeans、cumsum……）。</li>
+<li>最后用 <code class="inl">all.equal</code> 确认三种算法数值一致：<strong>先正确、再快</strong>，性能改写后必须回归比对，这本身就是 QC 纪律。</li>
+<li>user/system/elapsed 三个数是 R 的秒表；<code class="inl">system.time</code> 是最低成本的剖析（profiling）手段。</li>
+</ol></div>
+<div class="note">想知道具体哪一行慢，用 <code class="inl">profvis::profvis({ 你的代码 })</code> 包一层，会在浏览器里给出逐行耗时与内存的交互式火焰图——相当于 R 版的性能分析器。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>SAS DATA step 引擎为逐行处理而生，行级思维在 SAS 里是正道；R 里逐行 for + 循环内抽列却是头号性能杀手。心智顺序：向量化函数 &gt; map/apply 族 &gt; for 循环。但也别盲目改写——先用 system.time 测，确认瓶颈再动手。</div>
+
+<h2 id="s5-5">5.5 错误与日志：tryCatch、withCallingHandlers、logger</h2>
+<p>SAS 有 ERROR/WARNING 的日志纪律；R 的对应物是<strong>条件系统</strong>：error（中断）、warning（警示）、message（提示），外加两种捕获姿势——tryCatch 与 withCallingHandlers——以及生产级日志包 logger。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">derive_agegrp &lt;- function(rfstdtc) {
+  if (is.na(rfstdtc)) {
+    warning("RFSTDTC missing, returning NA")
+    return(NA_real_)
+  }
+  as.numeric(substr(rfstdtc, 1, 4)) - 1960
+}
+
+# tryCatch：handler 在调用者环境执行，原调用已经退出
+r1 &lt;- tryCatch(derive_agegrp(NA),
+               warning = function(w) {
+                 cat("tryCatch 捕获:", conditionMessage(w), "\n")
+                 NA_real_
+               })
+
+# withCallingHandlers：handler 在现场执行，可用 restart 让代码继续
+r2 &lt;- withCallingHandlers(
+  derive_agegrp(NA),
+  warning = function(w) {
+    cat("handler 现场看到:", conditionMessage(w), "\n")
+    invokeRestart("muffleWarning")   # 按下警告，函数继续跑完
+  })
+
+cat("r1 =", r1, "; r2 =", r2, "\n")
+
+suppressPackageStartupMessages(library(logger))
+log_formatter(formatter_sprintf)   # 默认是 glue 风格 {}，此处用 %s 演示
+log_threshold(INFO)
+log_info("derive_agegrp 开始，输入 n = %s", 100)
+log_error("RFSTDTC 格式非法: %s", "2015-13-45")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+tryCatch 捕获: RFSTDTC missing, returning NA 
+handler 现场看到: RFSTDTC missing, returning NA 
+r1 = NA ; r2 = NA 
+INFO [2026-09-16 23:51:50] derive_agegrp 开始，输入 n = 100
+ERROR [2026-09-16 23:51:50] RFSTDTC 格式非法: 2015-13-45</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>derive_agegrp 遇缺失先 <code class="inl">warning</code> 再正常返回 NA——warning 不中断执行，等价于 SAS 的 WARNING 进日志。</li>
+<li>tryCatch：条件一发生，<strong>原调用立即退栈</strong>，handler 在调用者环境里执行，其返回值成为整个 tryCatch 的结果（r1）。</li>
+<li>withCallingHandlers：handler 在<strong>条件发生的现场</strong>执行，执行完函数体继续跑；<code class="inl">invokeRestart("muffleWarning")</code> 把这条警告按下不表，r2 最终拿到的是函数的正常返回值。</li>
+<li>logger 三件套：<code class="inl">log_threshold</code> 定级别门槛、<code class="inl">log_formatter</code> 定占位符风格、<code class="inl">log_info / log_error</code> 按级别输出——行首级别前缀就是后续筛日志的抓手。</li>
+<li>输出的 INFO/ERROR 两行即"R 版 SAS LOG"的雏形；生产上用 appender_to_file 落盘，日志文件归档进验证证据链。</li>
+</ol></div>
+<div class="note">logger 默认的 formatter 是 glue 风格 <code class="inl">{}</code> 占位符（如 <code class="inl">log_info("n = {}", 100)</code>）；本例用 <code class="inl">log_formatter(formatter_sprintf)</code> 切到 %s 风格，以保证纯命令行捕获环境下输出稳定。两者功能等价，团队约定一种即可。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：tryCatch 与 withCallingHandlers 的关键区别是什么？</p>
+<button class="quiz-opt" data-opt="A">tryCatch 只能捕获 error，withCallingHandlers 只能捕获 warning</button>
+<button class="quiz-opt" data-opt="B">tryCatch 处理条件时原调用已退出调用栈；withCallingHandlers 留在发生现场，可按下条件让代码继续执行</button>
+<button class="quiz-opt" data-opt="C">两者完全等价，只是新旧两套写法</button>
+<div class="quiz-exp">选 B。tryCatch 的 handler 在调用者环境执行，条件发生时原调用已经退栈，handler 返回值即 tryCatch 的结果；withCallingHandlers 的 handler 在条件发生的现场执行，处理完还可用 invokeRestart("muffleWarning") 按下条件、让函数体继续跑完——本节的 r2 就是这样拿到正常返回值的。两者都能捕获 error/warning/message，区别在"退出后处理"还是"在现场处理"。</div>
+</div>
+
+<h2 id="s5-6">5.6 testthat：把 QC 写成断言</h2>
+<p>双编程很贵；testthat 把"QC 的另一半"机器化：每条派生规则写成可执行断言，改完代码一条命令全量回归。它也是第 6 章包开发与 5.7 CI 的地基。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(testthat)
+
+derive_age &lt;- function(birth_year, ref_year) {
+  if (!is.numeric(birth_year)) stop("birth_year must be numeric")
+  ref_year - birth_year
+}
+
+with_reporter(ProgressReporter$new(show_praise = FALSE), {
+  test_that("derive_age 正确", {
+    expect_equal(derive_age(1960, 2024), 64)
+    expect_error(derive_age("1960", 2024))
+  })
+})</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+v | F W  S  OK | Context
+- |          1 |
+== Results =====================================================================
+[ FAIL 0 | WARN 0 | SKIP 0 | PASS 2 ]</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">test_that("描述", {...})</code>：一个测试用例，描述就是人读的需求名，失败时会出现在报告里。</li>
+<li><code class="inl">expect_equal(derive_age(1960, 2024), 64)</code>：正向断言——正确输入必须算出 64。</li>
+<li><code class="inl">expect_error(derive_age("1960", 2024))</code>：负向断言——传字符串必须抛错。正负两面都测，才叫覆盖。</li>
+<li><code class="inl">with_reporter(ProgressReporter, ...)</code> 包一层进度报告器，跑完打出 <code class="inl">[ FAIL 0 | PASS 2 ]</code> 式计数——CI 里只要 FAIL 不为 0，整条流水线红灯。</li>
+</ol></div>
+<div class="note">正式项目里测试文件放 <code class="inl">tests/testthat/</code>，用 <code class="inl">testthat::test_dir("tests/testthat")</code> 一条命令全量回归；打包后（第 6 章）由 R CMD check 自动执行，CI 再把它搬上云端定时跑。</div>
+
+<h2 id="s5-7">5.7 CI：GitHub Actions 上的持续回归</h2>
+<p>CI（持续集成）= 每次 <code class="inl">git push</code>，云端机器自动替你跑一遍 5.6 的回归测试，日志自动存档。对 GxP 团队，它的真实价值是：把验证从"一次性事件"变成"每次提交都有时间戳的持续证据"。GitHub Actions 是事实标准，一个 YAML 文件就够：</p>
+<pre class="code" style="white-space:pre"><code class="lang-yaml"># .github/workflows/check.yaml —— 每次 push 自动回归
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true      # 用 Posit 公共镜像装包，提速
+
+      - uses: r-lib/actions/setup-renv@v2   # 按 renv.lock 复原锁定环境
+
+      - uses: r-lib/actions/check-r-package@v2  # R CMD check + testthat 全量回归</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">on: push / pull_request</code>：声明触发条件——推送到 main/develop 或提 PR 时自动开跑。</li>
+<li><code class="inl">runs-on: ubuntu-latest</code> 指定运行机器；<code class="inl">GITHUB_PAT</code> 令牌让 Actions 有权安装依赖包。</li>
+<li><code class="inl">setup-r@v2</code> 装 R 本体，<code class="inl">use-public-rspm</code> 打开包二进制镜像。</li>
+<li><code class="inl">setup-renv@v2</code> 按 renv.lock 装回完全相同的包版本——CI 证据链里的"环境"环节。</li>
+<li><code class="inl">check-r-package@v2</code> = R CMD check + testthat 全量回归；任何 ERROR 或测试失败，整个 job 红灯，PR 不许合。</li>
+</ol></div>
+<div class="note">CI 全绿是"持续回归"证据，不能替代验证计划与风险评估——它做的是把验证里 OQ 级的回归部分日常化。YAML 文件本身要进版本库、可评审、可追溯，它也是验证文档的一部分。</div>
+
+<h2 id="s5-8">5.8 GxP 验证：valtools 工作流与 CSV 映射</h2>
+<p>第 0 章说过：在 R 世界，验证的最小单元是"包 + 测试 + 锁环境"，而不是单个脚本。落到工具上，pharmaverse/PHUSE 社区开源的 <strong>valtools</strong>（<a href="https://phuse-org.github.io/valtools/">pharmaverse.github.io/valtools</a>）把 CSV 纪律搬进了 R 项目：用 <code class="inl">vt_create_skeleton()</code> 生成验证工程骨架（验证计划、需求、风险分析各就各位）；需求、代码、测试同库管理，形成<strong>需求→代码→测试的追溯矩阵</strong>；最后 <code class="inl">vt_create_report()</code> 一键产出带追溯关系的验证报告。你在 SAS 时代的 VP/IQ/OQ/PQ 文档树，几乎可以逐层映射过去：</p>
+<table>
+<tr><th>组件</th><th>GAMP5 视角</th><th>验证活动（CSV）</th></tr>
+<tr><td>R 本体 + CRAN/内部包</td><td>现成/可配置软件（Cat 1 / Cat 5）</td><td>供应商评估 + riskmetric 风险打分；renv.lock 锁版本，作为 IQ 证据留档</td></tr>
+<tr><td>派生函数（derive_*）</td><td>自研代码（Cat 5）</td><td>需求-代码-测试追溯（valtools）；testthat 单元测试 = OQ</td></tr>
+<tr><td>ADaM / TLF 输出</td><td>业务交付物</td><td>独立双编程 + diffdf 比对、结果审阅 = PQ</td></tr>
+<tr><td>CI 流水线</td><td>自动化工具</td><td>每次 push 全量回归，日志归档为持续验证证据</td></tr>
+<tr><td>分析环境</td><td>系统配置</td><td>sessionInfo() + renv.lock 存档，进验证报告附录</td></tr>
+</table>
+<div class="note">PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">ET-140《R Package Validation》</a>（Kevin Lee）把 R 包验证整理成一条持续生命周期：需求收集 → 治理 → 风险评估 → 验证执行 → 安装到系统 → 文档化留档；工具面用 testthat 承担测试、riskmetric / risk.assessr 承担包风险打分。读完它你会发现：这套框架没有发明新纪律，只是把你熟悉的 CSV 流程翻译成了 R 的工程形态。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>像验证 SAS 程序一样只验证"那一个脚本"。R 的分析结果依赖一整条包依赖链——同一个脚本在 dplyr 1.1.0 和 1.1.6 下行为可能有细微差别。验证对象必须是"包 + 版本 + 环境 + 测试"的整体，这正是 renv.lock、sessionInfo 和 valtools 追溯矩阵存在的意义。</div>
+
+<h2 id="s5-9">5.9 代码评审清单：10 条硬杠</h2>
+<p>把下面的清单贴在 PR 模板里，评审时逐条打勾——这就是 R 版的"程序审阅 sign-off"：</p>
+<ol>
+<li><strong>命名</strong>：函数/文件遵循团队规范（derive_* / tfl_* 前缀、snake_case），名字即用途。</li>
+<li><strong>spec 链接</strong>：程序头或 roxygen 注释里给出映射规格（spec）链接与需求编号，可回溯。</li>
+<li><strong>无硬编码</strong>：研究号、路径、日期一律来自配置或参数；不出现 "C:/Users/..." 式绝对路径。</li>
+<li><strong>NA 处理</strong>：join 键缺失、日期缺失、分母为零的行为被显式处理并在注释里说明。</li>
+<li><strong>键唯一性断言</strong>：对 USUBJID 等主键有 <code class="inl">stopifnot(!anyDuplicated(...))</code> 或断言包检查。</li>
+<li><strong>日志</strong>：关键步骤有 logger/message 输出并可落盘，级别足以还原运行过程。</li>
+<li><strong>测试覆盖</strong>：每个派生函数至少一正（expect_equal）一负（expect_error）两条 testthat 断言。</li>
+<li><strong>renv 锁</strong>：新增依赖后跑过 <code class="inl">renv::snapshot()</code>，renv.lock 随 PR 一起提交评审。</li>
+<li><strong>sessionInfo 留存</strong>：正式运行的输出附 sessionInfo()，与产物、日志一并归档。</li>
+<li><strong>双人复核点</strong>：merge 逻辑、人群划分、分母定义等 QC 关键点标记"需第二人复核"，留复核记录。</li>
+</ol>
+
+<h2 id="s5-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://adv-r.hadley.nz">Advanced R (2e)</a> — Hadley Wickham 的权威进阶教材；本章环境、闭包、S3、条件系统的完整展开 <span class="tag">进阶</span></li>
+<li><a href="https://testthat.r-lib.org">testthat 官网</a> — 单元测试入门文档，先读 get-started 再翻期望函数大全 <span class="tag">入门</span></li>
+<li><a href="https://phuse-org.github.io/valtools/">valtools</a> — R 包 GxP 验证框架：需求-代码-测试追溯矩阵与验证报告生成 <span class="tag">进阶</span></li>
+<li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">PharmaSUG 2026 ET-140 R Package Validation</a> — R 包验证全生命周期论文，5.8 节的底稿 <span class="tag">参考</span></li>
+<li><a href="https://cran.r-project.org/package=logger">logger CRAN 页</a> — 日志级别、formatter、appender 的完整参考 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s5-ex">本章练习</h2>
+<ol>
+<li>（易）挑你项目里现有的一个派生函数，补两条 testthat 断言：一条 expect_equal 验证正确输入，一条 expect_error 验证非法输入必须抛错。</li>
+<li>（中）给一个完整脚本加上 logger 三级日志：开始/关键步骤用 log_info，可疑数据用 log_warn，致命失败用 log_error，并用 appender_to_file 落盘。</li>
+<li>（难）为练习 2 的脚本写一个 GitHub Actions workflow：push 触发，setup-r + setup-renv 复原环境，跑通 testthat 全量回归，直到 CI 全绿。</li>
+</ol>
+<p class="lede">下一章：把散落各处的 derive_* 函数收编成真正的 R 包——roxygen 文档、tests 目录、R CMD check 与内部包发布流程，让 5.8 的验证框架有物可验。</p>
+</article></main>
+<aside class="toc">
+<a href="#s5-1">5.1 函数式编程 map</a>
+<a href="#s5-2">5.2 环境与闭包</a>
+<a href="#s5-3">5.3 S3 十分钟</a>
+<a href="#s5-4">5.4 性能与向量化</a>
+<a href="#s5-5">5.5 错误处理与日志</a>
+<a href="#s5-6">5.6 testthat 测试</a>
+<a href="#s5-7">5.7 CI：GitHub Actions</a>
+<a href="#s5-8">5.8 GxP 与 valtools</a>
+<a href="#s5-9">5.9 代码评审清单</a>
+<a href="#s5-res">章末资源</a>
+<a href="#s5-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

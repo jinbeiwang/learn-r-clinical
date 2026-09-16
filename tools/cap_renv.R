@@ -1,0 +1,6 @@
+renv::init(bare = TRUE)
+renv::snapshot()
+cat('--- restore ---\n')
+renv::restore(prompt = FALSE)
+cat('--- lockfile ---\n')
+cat(readLines('renv.lock'), sep = '\n')
