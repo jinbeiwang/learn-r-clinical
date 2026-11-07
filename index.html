@@ -1,18 +1,18 @@
 <!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>从 SAS 到 R · 临床数据分析与制药实践</title>
-<meta name="description" content="写给临床 SAS Programmer 的 R 进阶教程：CDISC、统计分析、TLF、包开发、Shiny 与六大公开数据实战案例。">
+<meta name="description" content="写给临床 SAS Programmer 的 R 进阶教程：CDISC、统计分析、TLF、包开发、Shiny、监管递交与七个公开数据实战案例，附药企常用 R 包地图。">
 <link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
 <body><div class="progress"></div>
 <header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
-<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="index.html#path">90 天路径</a><a href="ch9-submission.html">递交与复现</a><a href="ch8-community.html">社区与职业</a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="index.html#path">90 天路径</a><a href="ch9-submission.html">递交与复现</a><a href="package-map.html">包地图</a><a href="ch8-community.html">社区与职业</a>
 <button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
 
 <section class="hero">
   <p class="crumb">● 一套开源教程 · 中文 · 可运行</p>
   <h1>从 SAS 到 R。<br><i>临床数据实战。</i></h1>
   <p class="lede">设计原理。工程实践。<br>写给想系统掌握 R 的临床 SAS Programmer 与统计编程同行。</p>
-  <p>你已懂 CDISC、懂统计、懂递交——缺的只是把这套心智翻译成 R。<br>本书九章主线 + 一个监管递交进阶专题 + 七个可公开获取数据的实战案例，从环境搭建一路走到 pharmaverse、Shiny 与可复现递交包。</p>
+  <p>你已懂 CDISC、懂统计、懂递交——缺的只是把这套心智翻译成 R。<br>本书九章主线 + 一个监管递交进阶专题 + 一张药企常用 R 包地图 + 七个可公开获取数据的实战案例，从环境搭建一路走到 pharmaverse、Shiny 与可复现递交包。</p>
   <p style="margin-top:26px"><a class="btn" href="ch0-environment.html">继续阅读 →</a> &nbsp; <a href="#toc" style="margin-left:14px">浏览目录 ↓</a></p>
   <svg viewBox="0 0 900 150" style="width:100%;max-width:900px;margin-top:40px" role="img" aria-label="SAS 经验到监管递交的学习管线">
     <g font-family="serif" font-size="17" fill="currentColor">
@@ -54,6 +54,7 @@
   <a class="card" href="ch7-shiny.html"><span class="no">CH 7</span><b>Shiny 与交互：从脚本到应用</b><span>reactive 心智 · modules · DT/plotly · teal 探索器 · 部署与 GxP 考量 · 约 40 分钟</span></a>
   <a class="card" href="ch8-community.html"><span class="no">CH 8</span><b>社区与职业：pharmaverse 地图</b><span>R/Pharma · PHUSE · China PharmaRUG · 精读清单 · 90 天计划 · 团队迁移策略 · 约 30 分钟</span></a>
   <a class="card" href="ch9-submission.html"><span class="no">CH 9</span><b>进阶专题：监管递交与可复现性</b><span>监管口径 · 七个 Pilot · 七层证据链 · ADRG 中文模板 · 包风险验证 · 容器边界 · 约 45 分钟</span></a>
+  <a class="card" href="package-map.html"><span class="no">MAP</span><b>药企常用 R 包地图</b><span>按流水线查包 · SDTM/ADaM · TLG 与 teal 全家桶 · 验证与递交 · 2026-11 治理迁移 · 本书覆盖对照</span></a>
 </div>
 
 <h2 id="cases">实战案例（公开数据）</h2>
@@ -75,6 +76,7 @@
 <tr><td>7–10</td><td>ch5–ch7 + C3–C5：工程化、包、Shiny</td><td>把 C1 的推导函数包化（ch6 实战）；跑通 C3–C5 并各加一个自定分析</td></tr>
 <tr><td>11–12</td><td>ch8 + C6 + 复盘</td><td>部署 C6 探索器；按 ch8 清单精读 3 篇会议论文并写摘要</td></tr>
 <tr><td>进阶</td><td>ch9 + C7：监管递交与可复现性</td><td>跑通 C7 并逐项核对 9.8 的 10 条递交级清单；把 ADRG 骨架翻译成中文并补包版本附表</td></tr>
+<tr><td>工具</td><td>package-map：药企常用 R 包地图</td><td>用 PM.10 覆盖对照表列一份「下一阶段要补的包」清单，重点看 rbmi / cards / sdtm.oak</td></tr>
 </table>
 
 <footer>

@@ -20,6 +20,8 @@
 <a class="on" href="ch7-shiny.html">7 Shiny 与交互</a>
 <a href="ch8-community.html">8 社区与职业</a>
 <a href="ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">工具</div>
+<a href="package-map.html">◆ 药企常用 R 包地图</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -207,6 +209,7 @@ class(ggplotly(km))  : plotly htmlwidget</pre>
 </ol></div>
 
 <h2 id="s7-6">7.6 teal：临床探索应用的现成框架</h2>
+<div class="note"><strong>teal 是家族，不是单个包：</strong><code class="inl">teal.code</code> / <code class="inl">data</code> / <code class="inl">widgets</code> / <code class="inl">reporter</code> / <code class="inl">slice</code> / <code class="inl">logger</code> / <code class="inl">picks</code> 各管一段，2026-11-03 连同 teal 一起迁入 pharmaverse；11-04 续篇确认 Roche 与 Appsilon 共同持有版权，"strengthening its use in validated environments" 属<strong>未来方向</strong>而非当前承诺。逐包用途见 <a href="package-map.html">包地图 PM.5 / PM.9</a>。</div>
 <p>从零搭一个带筛选面板、代码可追溯、可导出报告的临床探索 app 很费工。<code class="inl">teal</code>（pharmaverse 生态）就是为此而生：它把"数据 + 过滤器 + 分析模块"标准化，你用 <code class="inl">teal::init()</code> 组装即可。下面的例子把 <code class="inl">dm</code> 塞进 <code class="inl">teal_data</code>，挂一个示例模块，构造出完整 teal app。</p>
 <pre class="code" style="white-space:pre"><code class="lang-r">library(teal)
 data("dm", package = "pharmaversesdtm")

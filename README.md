@@ -1,9 +1,9 @@
 # 从 SAS 到 R：临床数据分析与制药实践（交互式教程）
 
-一套面向**临床 SAS Programmer** 的中文交互式教程站：9 章主线 + 1 个监管递交进阶专题（CH 9）+ 7 个可公开获取数据的实战案例。
+一套面向**临床 SAS Programmer** 的中文交互式教程站：9 章主线 + 1 个监管递交进阶专题（CH 9）+ 1 张药企常用 R 包地图 + 7 个可公开获取数据的实战案例。
 在线阅读：<https://jinbeiwang.github.io/learn-r-clinical/>（GitHub Pages）；本地阅读：浏览器打开 `index.html`。
 
-> 教学用途，不构成监管递交依据。所有"实跑捕获"输出来自 R 4.5.0（Windows x86_64）。监管/社区事实核对于 2026-11（R Consortium Pilot 1–7、eCTD 文件格式规范 v9.3 / TCG v1.5、R Validation Hub Early Adopter Guide）；实际递交以公司 SOP、QA/RA 意见与当期法规为准。
+> 教学用途，不构成监管递交依据。所有"实跑捕获"输出来自 R 4.5.0（Windows x86_64）。监管/社区事实核对于 2026-11（R Consortium Pilot 1–7、eCTD 文件格式规范 v9.3 / TCG v1.5、R Validation Hub Early Adopter Guide；pharmaverse 2026-11-03 / 11-04 治理迁移公告与 scda deprecated 状态复核于 2026-11-07）；实际递交以公司 SOP、QA/RA 意见与当期法规为准。
 
 ## 目录结构
 
@@ -19,6 +19,7 @@
 ├── ch7-shiny.html           Shiny 与交互：reactive、modules、DT/plotly、teal、GxP 考量
 ├── ch8-community.html       社区与职业：R/Pharma、PHUSE、China PharmaRUG、精读清单、90 天计划
 ├── ch9-submission.html      进阶专题：监管口径、Pilot 1–7、七层证据链、ADRG 模板、包风险、容器边界
+├── package-map.html         工具页：药企常用 R 包地图（分组速查、2026-11 治理迁移、本书覆盖对照）
 ├── cases/                   七个实战案例（页面 + 可运行 .R + 离线缓存）
 │   ├── c1_sdtm_adam_t1.R    SDTM→ADaM→Table 1 全链路
 │   ├── c2_survival.R        公开肿瘤试验生存分析（survival::lung）
@@ -49,6 +50,7 @@
 | 7 | reactive、modules、DT/plotly、teal、部署与 GxP | C6 |
 | 8 | 社区地图、论文精读、90 天计划、迁移策略 | 全部 |
 | 9（进阶专题） | 监管口径、Pilot 1–7、七层证据链、ADRG 模板、包风险验证、容器/WebAssembly 边界、DevSecOps | C7 |
+| 工具页 | 药企常用 R 包地图：按流水线分组、生态归属、2026-11 治理迁移、本书覆盖对照 | 全部 |
 
 ## 资料筛选标准
 
@@ -64,7 +66,7 @@
 | 数据源 | 获取方式 | 许可/条款 | 对应案例与练习 |
 |---|---|---|---|
 | pharmaversesdtm（合成 SDTM） | CRAN 包内置 | 包内许可（合成数据） | C1：改 ADSL 衍生 / 加 ADAE 表 / 双编程脚本 |
-| scda（合成 SDTM+ADaM 年度归档） | GitHub insightsengineering/scda | 合成数据，见仓库许可 | C1 扩展：换年度归档重跑 |
+| scda（合成 SDTM+ADaM 年度归档） | GitHub insightsengineering/scda | 合成数据，见仓库许可；**已 deprecated、不再维护**（2026-11-07 复核） | 仅作历史概念；新项目改用 pharmaversesdtm / pharmaverseadam |
 | survival::lung（NCCTG 肺癌试验） | R 包内置 | 包内公开试验数据 | C2：KM 分层 / Cox 交互 / 竞争风险 |
 | hbiostat 数据集 | hbiostat.org/data 直下 | 教学公开 | C2 扩展：换队列复现 |
 | FAERS / openFDA | openFDA API 免注册；季度文件 FDA 官网 | 美国政府公共数据 | C3：AE 频数 / ROR·PRR / 时间趋势 |

@@ -1,0 +1,219 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>药企常用 R 包地图 · R 临床数据分析教程</title>
+<meta name="description" content="按临床数据流水线整理的制药行业常用 R 包速查表：SDTM/ADaM、TLG、统计、teal、递交格式、验证与环境复现，含 2026-11 pharmaverse 治理迁移清单。">
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="index.html#path">90 天路径</a><a href="ch9-submission.html">递交与复现</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<a href="ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">工具</div>
+<a class="on" href="package-map.html">◆ 药企常用 R 包地图</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+<a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 工具页</div>
+<div class="chapnum">MAP</div>
+<h1>药企常用 R 包地图</h1>
+<p class="lede">全书是按章节<strong>逐个实跑</strong>讲包的；这一页反过来，按<strong>临床数据流水线</strong>把包摊开成一张速查表：做某件事该找哪个包、谁在维护、本书哪一章讲过、2026 年的状态如何。适合读完两三章后回来对照，也适合团队做工具选型时当索引。</p>
+<div class="note"><strong>边界先说清：</strong>这些包是<strong>行业常用工具</strong>，不是"经 FDA 认证/验证"的软件。FDA 不验证编程语言，选择足够可靠的包并验证流程与环境的责任在申办方（见 <a href="ch9-submission.html">9.1</a>）。本页的社区公告与治理迁移信息只说明<strong>代码归属与维护方式</strong>，不构成合规依据；实际递交以公司 SOP、QA/RA 意见与当期法规为准。事实核对于 <strong>2026-11-07</strong>，来源见章末资源。</div>
+
+<h2 id="pm-1">PM.1 怎么读这张地图</h2>
+<p>每张表五列：<strong>包</strong>（CRAN / GitHub 上的名字）、<strong>用途</strong>（一句话）、<strong>生态 / 维护</strong>（谁在主导，跨公司共建会写明）、<strong>本书</strong>（哪一章实跑讲解，写"仅登记"表示本页只做索引）、<strong>状态</strong>。</p>
+<p>流水线顺序是：原始 EDC → SDTM → ADaM → TLG / 统计 → 交互式审阅 → XPT / Dataset-JSON → 递交包 → 验证与环境证据。读的时候不必从头到尾，直接跳到你要解决的那一步。</p>
+<div class="note"><strong>命名陷阱：</strong>CRAN 包名、GitHub 仓库名、项目简称经常不一致。例如 CRAN 上叫 <code class="inl">cardinalfda</code>，仓库是 <code class="inl">pharmaverse/cardinal</code>；<code class="inl">scda</code> 的数据在 <code class="inl">scda.2022</code> 这类年度归档包里；<code class="inl">teal</code> 既是框架名也是一个具体包名。写安装脚本和 <code class="inl">renv.lock</code> 时以 <strong>CRAN 包名</strong>为准。</div>
+
+<h2 id="pm-2">PM.2 数据层：SDTM / ADaM / 元数据</h2>
+<table>
+<tr><th>包</th><th>用途</th><th>生态 / 维护</th><th>本书</th><th>状态</th></tr>
+<tr><td><code class="inl">sdtm.oak</code></td><td>原始 EDC 数据 → SDTM，8 个可复用映射算法，EDC 与采集标准无关</td><td>CDISC COSA 赞助 / pharmaverse；源自 Roche–Genentech 内部 <code class="inl">roak</code> / OAK Garden</td><td>仅登记</td><td>缺口，值得补课</td></tr>
+<tr><td><code class="inl">admiral</code></td><td>SDTM → ADaM 模块化推导（ADSL / ADAE / ADTTE），显式组合 derivation</td><td>pharmaverse（Roche + GSK 发起，跨公司共建）</td><td><a href="ch2-cdisc.html">CH2</a> / <a href="cases/c1-sdtm-adam-t1.html">C1</a></td><td>主力</td></tr>
+<tr><td><code class="inl">admiraldev</code></td><td>扩展包的开发约定、测试与文档基础设施</td><td>pharmaverse</td><td>仅登记</td><td>配套</td></tr>
+<tr><td><code class="inl">admiralonco</code> · <code class="inl">admiralophtha</code> · <code class="inl">admiralvaccine</code> · <code class="inl">admiralpeds</code></td><td>肿瘤 / 眼科 / 疫苗 / 儿科的 ADaM 领域扩展</td><td>pharmaverse（Roche、Novartis、Pfizer、Cytel 等）</td><td>仅登记</td><td>按治疗领域选装</td></tr>
+<tr><td><code class="inl">pharmaversesdtm</code></td><td>合成 SDTM 演示数据（CDISC Pilot），dm / ae / ex / vs / lb 等</td><td>pharmaverse</td><td><a href="ch2-cdisc.html">CH2</a> / C1 起多个案例</td><td>本书默认练习数据</td></tr>
+<tr><td><code class="inl">pharmaverseadam</code></td><td>合成 ADaM 演示数据（adsl / adae / adlb 等）</td><td>pharmaverse</td><td><a href="ch4-tfl.html">CH4</a> / <a href="cases/c7-submission-bundle.html">C7</a></td><td>姐妹包</td></tr>
+<tr><td><code class="inl">synadam</code></td><td>CRAN 合成 ADaM，<code class="inl">extdata/</code> 直接带 CSV</td><td>CRAN 社区</td><td><a href="ch2-cdisc.html">CH2</a></td><td>教学</td></tr>
+<tr><td><code class="inl">scda</code> / <code class="inl">scda.2022</code></td><td>按年度归档、版本冻结的合成 SDTM + ADaM 成套数据</td><td>insightsengineering / Roche</td><td><a href="ch2-cdisc.html">CH2</a> / README</td><td><strong>已弃用，见 PM.9</strong></td></tr>
+<tr><td><code class="inl">metacore</code> · <code class="inl">metatools</code></td><td>把 spec 变成可检查的元数据对象，驱动建库与 Define-XML</td><td>pharmaverse / Atorus</td><td><a href="ch2-cdisc.html">CH2 2.6</a></td><td>主力</td></tr>
+<tr><td><code class="inl">haven</code> · <code class="inl">readxl</code></td><td>读 XPT / SAS / Excel，处理标签与日期类型</td><td>tidyverse / 社区</td><td><a href="cases/c4-nhanes.html">C4</a> / CH1</td><td>通用依赖</td></tr>
+</table>
+
+<h2 id="pm-3">PM.3 TLG 层：表格、图与 listing</h2>
+<p>这一层是 2026-11 治理迁移的主战场。前六行是 <code class="inl">rtables</code> 系"布局树 + ARD"主链，后面是 gtsummary 系与其他可选路线；两条路线可以共存，别把它们当成同一个包的不同版本。</p>
+<table>
+<tr><th>包</th><th>用途</th><th>生态 / 维护</th><th>本书</th><th>状态</th></tr>
+<tr><td><code class="inl">formatters</code></td><td>ASCII / 富文本表格的底层渲染引擎（分页、缩进、格式串）</td><td>pharmaverse（2026-11 起）</td><td>仅登记</td><td>底层，通常由 rtables 间接调用</td></tr>
+<tr><td><code class="inl">rtables</code></td><td>先声明多层布局树、再灌数据生成复杂临床表</td><td>pharmaverse（2026-11 起）</td><td><a href="ch4-tfl.html">CH4 4.2</a> / C1</td><td>主力</td></tr>
+<tr><td><code class="inl">rlistings</code></td><td>临床 listing，支持分页与展示格式</td><td>pharmaverse（2026-11 起）</td><td>仅登记</td><td>主力配套</td></tr>
+<tr><td><code class="inl">cards</code> · <code class="inl">cardx</code></td><td>生成 CDISC ARD（分析结果数据）与补充统计辅助函数</td><td>pharmaverse（2026-11 起）</td><td>仅登记</td><td>新兴标准，值得关注</td></tr>
+<tr><td><code class="inl">tern</code></td><td>在 rtables 布局上叠加临床汇总、生存与统计函数，出标准 TLG</td><td>pharmaverse（2026-11 起）</td><td><a href="ch4-tfl.html">CH4 4.3</a></td><td>主力</td></tr>
+<tr><td><code class="inl">autoslider.core</code></td><td>把 TLG 自动排成演示幻灯片 / 审阅稿</td><td>pharmaverse（2026-11 起）</td><td>仅登记</td><td>自动化分支</td></tr>
+<tr><td><code class="inl">gtsummary</code></td><td>一行出 Table 1 / 回归表，带 p 值与多种导出格式</td><td>社区（Daniel Sjoberg 等）</td><td><a href="ch4-tfl.html">CH4 4.5</a></td><td>主力（另一条路线）</td></tr>
+<tr><td><code class="inl">crane</code></td><td>补充 gtsummary，做递交级高度定制表；NEST 2.0 新包</td><td>Roche 版权 / 维护者 Roche；仓库仍在 <code class="inl">insightsengineering/crane</code></td><td>仅登记</td><td>2026 新增，<strong>未参与迁移</strong></td></tr>
+<tr><td><code class="inl">cardinalfda</code></td><td>FDA 推荐的安全性表格与图（AE、实验室、生命体征、暴露），构建于 cards / cardx / gtsummary / crane</td><td>pharmaverse（仓库 <code class="inl">pharmaverse/cardinal</code>），维护者 Roche</td><td>仅登记</td><td>2026 新增，submission-ready 定位</td></tr>
+<tr><td><code class="inl">tfrmt</code> · <code class="inl">tidytlg</code> · <code class="inl">tlgcatalog</code> · <code class="inl">siera</code></td><td>展示元数据语言 / tidyverse 式 TLG / 官方 TLG 示例目录 / 由 ARS 元数据生成分析程序</td><td>pharmaverse</td><td>仅登记</td><td>元数据驱动路线</td></tr>
+<tr><td><code class="inl">Tplyr</code> · <code class="inl">chevron</code> · <code class="inl">ggsurvfit</code></td><td>临床汇总语法 / 标准 TLG 模板 / 生存曲线图</td><td>pharmaverse 生态</td><td>仅登记</td><td>可替换模块</td></tr>
+<tr><td><code class="inl">gt</code> · <code class="inl">flextable</code> · <code class="inl">officer</code> · <code class="inl">huxtable</code></td><td>表格排版与 Word / RTF / HTML 导出</td><td>社区 / CRAN</td><td><a href="ch4-tfl.html">CH4 4.6</a></td><td>通用导出</td></tr>
+<tr><td><code class="inl">ggplot2</code></td><td>通用图形语法，几乎所有临床图的底座</td><td>tidyverse</td><td><a href="ch3-stats.html">CH3</a></td><td>通用依赖</td></tr>
+</table>
+
+<h2 id="pm-4">PM.4 统计分析层</h2>
+<table>
+<tr><th>包</th><th>用途</th><th>生态 / 维护</th><th>本书</th><th>状态</th></tr>
+<tr><td><code class="inl">survival</code> · <code class="inl">survminer</code></td><td>KM、log-rank、Cox 与生存曲线</td><td>CRAN / 社区（R 推荐包）</td><td><a href="ch3-stats.html">CH3</a> / <a href="cases/c2-survival.html">C2</a></td><td>主力</td></tr>
+<tr><td><code class="inl">mmrm</code></td><td>重复测量混合效应模型（MMRM），递交常用</td><td>openpharma / 社区</td><td><a href="ch3-stats.html">CH3</a></td><td>主力</td></tr>
+<tr><td><code class="inl">rbmi</code></td><td>参照基准多重插补（缺失数据处理，含 Bayesian / bootstrap / jackknife）</td><td>openpharma（Roche 版权与资助，维护者 Novartis）；CRAN 1.7.1 / 2026-11-05</td><td>仅登记</td><td><strong>本书最大统计缺口</strong></td></tr>
+<tr><td><code class="inl">emmeans</code> · <code class="inl">lme4</code> · <code class="inl">nlme</code></td><td>边际均值、混合模型与对照组比较</td><td>CRAN / 社区</td><td><a href="ch3-stats.html">CH3</a></td><td>主力</td></tr>
+<tr><td><code class="inl">broom</code> · <code class="inl">survey</code></td><td>模型结果整理 / 复杂抽样加权</td><td>tidymodels / 社区</td><td><a href="cases/c4-nhanes.html">C4</a></td><td>按场景选装</td></tr>
+</table>
+<div class="note">跨语言数值差异不属于"某个包"的问题：BLAS、编译器、舍入规则都会让 R 与 SAS 在小数位上分叉，递交前要写明容差声明。<strong>CAMIS</strong>（R / SAS / East 数值比对项目）与 <a href="ch9-submission.html">9.6</a> 专门处理这件事。</div>
+
+<h2 id="pm-5">PM.5 交互审阅层：teal 与 Shiny</h2>
+<p>teal 不是一个包，而是一组包：核心框架 + 数据 / 代码 / 控件 / 报告 / 筛选 / 日志 / 选择器各司其职。下面前八行正是 2026-11 迁移清单里的 teal 核心包。</p>
+<table>
+<tr><th>包</th><th>用途</th><th>生态 / 维护</th><th>本书</th><th>状态</th></tr>
+<tr><td><code class="inl">teal</code></td><td>把"数据 + 过滤器 + 分析模块"组装成临床探索 app</td><td>pharmaverse（2026-11 起，Roche 创建）</td><td><a href="ch7-shiny.html">CH7 7.6</a> / <a href="cases/c6-teal-explorer.html">C6</a></td><td>主力</td></tr>
+<tr><td><code class="inl">teal.code</code> · <code class="inl">teal.data</code> · <code class="inl">teal.widgets</code></td><td>可复现代码块 / 数据容器 / UI 控件</td><td>pharmaverse（2026-11 起）</td><td>仅登记</td><td>核心子包</td></tr>
+<tr><td><code class="inl">teal.reporter</code> · <code class="inl">teal.slice</code> · <code class="inl">teal.logger</code> · <code class="inl">teal.picks</code></td><td>报告导出 / 筛选面板 / 日志 / 变量选择器</td><td>pharmaverse（2026-11 起）</td><td><code class="inl">teal.slice</code> 见 CH7</td><td>核心子包</td></tr>
+<tr><td><code class="inl">teal.modules.clinical</code></td><td>现成临床 TLF 模块库（人口学、AE、KM、森林图等）</td><td>pharmaverse</td><td><a href="ch7-shiny.html">CH7 7.6</a> / C6</td><td>进阶</td></tr>
+<tr><td><code class="inl">shiny</code> · <code class="inl">DT</code> · <code class="inl">plotly</code></td><td>reactive 应用框架、交互表、交互图</td><td>Posit / 社区</td><td><a href="ch7-shiny.html">CH7</a></td><td>主力</td></tr>
+<tr><td><code class="inl">rhino</code></td><td>企业级 Shiny 应用工程化骨架</td><td>Appsilon / pharmaverse 生态</td><td>仅登记</td><td>规模化时考虑</td></tr>
+</table>
+
+<h2 id="pm-6">PM.6 递交格式与追溯层</h2>
+<table>
+<tr><th>包 / 工具</th><th>用途</th><th>生态 / 维护</th><th>本书</th><th>状态</th></tr>
+<tr><td><code class="inl">xportr</code></td><td>按 spec 写 SAS Transport v5（.xpt），校验类型、长度与标签</td><td>pharmaverse</td><td><a href="ch9-submission.html">CH9</a> / <a href="cases/c7-submission-bundle.html">C7</a></td><td>主力</td></tr>
+<tr><td><code class="inl">datasetjson</code></td><td>读写 CDISC Dataset-JSON v1.1（列级元数据、日期 ISO-8601 字符）</td><td>pharmaverse / CDISC COSA</td><td>CH9 / C7</td><td>双轨过渡期</td></tr>
+<tr><td><code class="inl">pkglite</code></td><td>把闭源 R 包打成 ASCII 文本束，供 eCTD 递交</td><td>pharmaverse eSubmission</td><td>CH9 / C7</td><td>主力</td></tr>
+<tr><td><code class="inl">logrx</code> · <code class="inl">whirl</code> · <code class="inl">logger</code></td><td>执行日志与 traceability，记录会话、代码、输出与警告</td><td>pharmaverse / 社区</td><td><a href="ch4-tfl.html">CH4 4.8</a> / CH9 / C7</td><td>主力</td></tr>
+<tr><td><code class="inl">sessioninfo</code> · <code class="inl">diffdf</code> · <code class="inl">waldo</code></td><td>会话快照 / 双编程数据集比对 / 对象差异</td><td>社区 / pharmaverse</td><td><a href="ch2-cdisc.html">CH2</a> / CH9 / C7</td><td>主力</td></tr>
+<tr><td>Define-XML · Pinnacle 21</td><td>数据集说明书与递交前 conformance 校验（非 R 包）</td><td>CDISC / FDA 工具链</td><td>CH9 / C7</td><td>递交必备</td></tr>
+</table>
+
+<h2 id="pm-7">PM.7 包验证与风险控制层</h2>
+<p>这一整套来自 <strong>R Validation Hub / pharmaR</strong> 的《A Risk-based Approach for Assessing R Package Accuracy within a Validated Infrastructure》白皮书。<code class="inl">riskmetric</code> 打分不含 <code class="inl">accuracy</code>，断网环境下联网指标返回 <code class="inl">NA</code> 要如实记录，详见 <a href="ch9-submission.html">9.5</a>。</p>
+<table>
+<tr><th>包 / 工具</th><th>用途</th><th>生态 / 维护</th><th>本书</th><th>状态</th></tr>
+<tr><td><code class="inl">riskmetric</code> · <code class="inl">riskassessment</code> · <code class="inl">riskscore</code></td><td>量化包质量指标 / 交互式评估应用 / 全量包风险分数快照</td><td>R Validation Hub（pharmaR）</td><td><a href="ch5-advanced.html">CH5 5.8</a> / CH9 9.5</td><td>主力，含实跑输出</td></tr>
+<tr><td><code class="inl">risk.assessr</code> · <code class="inl">oysteR</code> · <code class="inl">thevalidatoR</code></td><td>另一套评估体系 / CVE 扫描 / GitHub Action 生成验证报告 PDF</td><td>社区 / pharmaverse CI</td><td>CH5 / CH9</td><td>并列方案</td></tr>
+<tr><td><code class="inl">valtools</code> · <code class="inl">testthat</code></td><td>验证框架（需求—测试—报告） / 单元测试</td><td>pharmaverse / tidyverse</td><td><a href="ch5-advanced.html">CH5</a> / <a href="ch6-pkgdev.html">CH6</a></td><td>主力；valtools 对 R 4.5.0 无 CRAN 版，需 GitHub 安装</td></tr>
+<tr><td><code class="inl">covr</code> · <code class="inl">lintr</code> · <code class="inl">styler</code></td><td>覆盖率 / 静态检查 / 代码风格，CI 质量门禁</td><td>社区 / CRAN</td><td>仅登记</td><td>可选补充</td></tr>
+</table>
+
+<h2 id="pm-8">PM.8 环境复现与工程层</h2>
+<table>
+<tr><th>包 / 工具</th><th>用途</th><th>生态 / 维护</th><th>本书</th><th>状态</th></tr>
+<tr><td><code class="inl">renv</code></td><td>项目级依赖锁定（<code class="inl">renv.lock</code>），snapshot / restore</td><td>Posit</td><td><a href="ch0-environment.html">CH0 0.3</a> / CH9 9.3 / C7</td><td>核心</td></tr>
+<tr><td><code class="inl">packrat</code></td><td>renv 的前身，历史项目可能仍遇到</td><td>Posit（已由 renv 取代）</td><td>仅登记</td><td>历史</td></tr>
+<tr><td>Docker / Podman · webR</td><td>整体镜像 / WebAssembly 审评端运行，跨平台边界见 9.6</td><td>社区 / R Consortium Pilot 4</td><td>CH9 9.6</td><td>有边界，非默认解</td></tr>
+<tr><td><code class="inl">quarto</code> · <code class="inl">rmarkdown</code> · <code class="inl">knitr</code></td><td>参数化报告，一份 qmd 出 N 份 TLF</td><td>Posit</td><td><a href="ch4-tfl.html">CH4 4.7</a> / CH6</td><td>主力</td></tr>
+<tr><td><code class="inl">usethis</code> · <code class="inl">devtools</code> · <code class="inl">roxygen2</code></td><td>包开发工作流与文档生成</td><td>Posit / 社区</td><td><a href="ch6-pkgdev.html">CH6</a></td><td>主力</td></tr>
+<tr><td><code class="inl">targets</code> · <code class="inl">here</code> · <code class="inl">fs</code></td><td>流水线编排 / 相对路径 / 文件系统操作</td><td>社区 / CRAN</td><td>仅登记</td><td>规模化时考虑</td></tr>
+</table>
+
+<h2 id="pm-9">PM.9 2026-11 治理迁移与两个易错点</h2>
+<p><strong>公告：</strong><a href="https://pharmaverse.github.io/blog/posts/2026-11-03-roche-open-source-t/roche-open-source-tlg-packages-move-to-pharmaverse.html">Roche Open-Source TLG Packages Move to pharmaverse</a>（2026-11-03，Joe Zhu / Dony Unardi，代表 NEST team）。罗氏把一批临床报告与探索分析包从 <code class="inl">insightsengineering/</code> 迁入 <code class="inl">pharmaverse/</code>，转为社区共治。官方 "What Packages Have Migrated?" 小节共 <strong>15 个包</strong>：</p>
+<table>
+<tr><th>分组</th><th>包</th></tr>
+<tr><td>Reporting &amp; Tabulation Foundation</td><td><code class="inl">formatters</code>、<code class="inl">rtables</code>、<code class="inl">rlistings</code>、<code class="inl">cards</code>、<code class="inl">cardx</code></td></tr>
+<tr><td>Analysis &amp; Automation Modules</td><td><code class="inl">tern</code>、<code class="inl">autoslider.core</code></td></tr>
+<tr><td>{teal} ecosystem 核心包</td><td><code class="inl">teal</code>、<code class="inl">teal.code</code>、<code class="inl">teal.data</code>、<code class="inl">teal.widgets</code>、<code class="inl">teal.reporter</code>、<code class="inl">teal.slice</code>、<code class="inl">teal.logger</code>、<code class="inl">teal.picks</code></td></tr>
+</table>
+<p><strong>对用户意味着什么：</strong>官方对 CRAN / Release Users 的原文是 <em>Zero breaking changes</em> —— 已发布版本不变，通过 CRAN 或内部镜像安装时 R 代码无需改动；GitHub 仓库会自动重定向，但建议把开发版引用从 <code class="inl">insightsengineering/&lt;pkg&gt;</code> 改为 <code class="inl">pharmaverse/&lt;pkg&gt;</code>（如 <code class="inl">pak::pkg_install("pharmaverse/teal")</code>），issue 与 PR 也集中到新组织。</p>
+<div class="note"><strong>易错点一 · 别把社区公告读成验证承诺：</strong>11-03 这篇<strong>没有</strong>出现 "validated environments"，也<strong>没有</strong>讨论 GxP、再验证或冻结版本，更没有给出 roadmap 或版本号。"零破坏性变化"说的是<strong>仓库迁移不改 API</strong>，不等于已冻结的验证环境可以跳过变更控制。<br>真正提到 <em>strengthening its use in validated environments</em> 的是次日续篇 <a href="https://pharmaverse.github.io/blog/posts/2026-11-04-roche-appsilon-teal/roche-appsilon-teal.html">Roche and Appsilon Build on Their Collaboration…</a>（2026-11-04）：Roche 与 Appsilon 共同持有 teal 版权，未来开发方向包括该目标、AI 辅助开发指引以及测试与依赖管理改进 —— 这是<strong>未来方向</strong>，不是当前已生效的能力或合规声明。已锁定环境仍按 SOP 走变更控制，包来源与版本照旧在 <code class="inl">renv.lock</code> / <code class="inl">package_versions.tsv</code> 留证（见 <a href="ch9-submission.html">9.3</a> 与 <a href="cases/c7-submission-bundle.html">C7</a>）。</div>
+<div class="note"><strong>易错点二 · 不是所有 Roche 系包都迁走了：</strong><code class="inl">crane</code>（CRAN 0.3.2 / 2026-06-03，NEST 2.0 新包）仓库仍在 <code class="inl">insightsengineering/crane</code>；<code class="inl">scda</code> 也仍在 <code class="inl">insightsengineering/scda</code>。而 <code class="inl">cardinalfda</code>（CRAN 0.3.0 / 2026-09-04）本来就在 <code class="inl">pharmaverse/cardinal</code>。判断包的维护状态要看<strong>具体仓库</strong>，别按公司名一刀切。</div>
+<div class="note"><strong>scda 状态修正：</strong><a href="https://github.com/insightsengineering/scda">insightsengineering/scda</a> 的 README 顶部已标注 <em>"scda is deprecated and no longer maintained. Use at your own risk."</em>（本页核对于 2026-11-07）。本书 <a href="ch2-cdisc.html">CH2 2.1</a> 把它列为"年度归档、适合企业做回归测试与验证"是当时的写法，现在<strong>不应再作为新项目的推荐数据源</strong>；日常教学与单元测试用 <code class="inl">pharmaversesdtm</code> / <code class="inl">pharmaverseadam</code>，需要版本冻结时把数据快照纳入自己的版本库与验证证据，而不是依赖一个已停止维护的外部包。</div>
+
+<pre class="lang-r" style="white-space:pre"># 迁移后：核对已锁定环境里包的来源与版本，比改代码更重要
+library(renv)
+lock &lt;- renv::lockfile_read("renv.lock")
+pkgs &lt;- names(lock$Packages)
+print(pkgs)</pre>
+
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 1：某项目的 <code class="inl">renv.lock</code> 里锁着 <code class="inl">rtables</code>，同事说"11 月迁到 pharmaverse 了，得赶紧升级并重新验证"，最稳妥的判断是？</p>
+<button class="quiz-opt" data-opt="A">必须立即升级到 pharmaverse 新版，否则递交不合规</button>
+<button class="quiz-opt" data-opt="B">CRAN 已发布版本零破坏性变化、R 代码不用改；是否动已锁定的包按 SOP 变更控制决定，并核对开发版 remote</button>
+<button class="quiz-opt" data-opt="C">公告已承诺这些包可用于 validated environments，无需再做包风险评估</button>
+<div class="quiz-exp">选 B。11-03 公告的 <em>Zero breaking changes</em> 只针对已发布版本与仓库迁移；它既没有给 roadmap，也没有谈验证环境，"strengthening its use in validated environments" 是 11-04 续篇里的<strong>未来开发方向</strong>。已冻结环境的任何变更仍按 SOP 走，包风险评估见 9.5。</div>
+</div>
+
+<div class="quiz" data-answer="A">
+<p class="quiz-q">测验 2：下面哪一组是本书 CH2 之后仍推荐作为练习数据源的？</p>
+<button class="quiz-opt" data-opt="A">pharmaversesdtm / pharmaverseadam</button>
+<button class="quiz-opt" data-opt="B">scda / scda.2022（年度归档）</button>
+<button class="quiz-opt" data-opt="C">只从 GitHub 拉最新开发版 teal 自带数据</button>
+<div class="quiz-exp">选 A。<code class="inl">scda</code> 已明确 deprecated 且不再维护；<code class="inl">pharmaversesdtm</code> / <code class="inl">pharmaverseadam</code> 是 pharmaverse 维护的合成 SDTM / ADaM 数据，也是本书的默认练习数据。</div>
+</div>
+
+<h2 id="pm-10">PM.10 本书覆盖对照：哪些实跑过，哪些只是登记</h2>
+<p>这张表直接回答"这些药企常用包有没有整理进笔记"：</p>
+<table>
+<tr><th>层</th><th>已在章节实跑讲解</th><th>本页仅登记（尚未展开）</th></tr>
+<tr><td>数据层</td><td>admiral、pharmaversesdtm、metacore、metatools、diffdf、synadam</td><td>sdtm.oak、admiral 扩展族、pharmaverseadam、admiraldev；scda 已弃用</td></tr>
+<tr><td>TLG 层</td><td>rtables、tern、gtsummary、tableone、flextable、officer、Quarto</td><td>formatters、rlistings、cards / cardx、crane、cardinalfda、tfrmt / tidytlg / tlgcatalog、Tplyr、chevron、autoslider.core、ggsurvfit</td></tr>
+<tr><td>统计层</td><td>survival、survminer、mmrm、emmeans、lme4</td><td>rbmi、broom、nlme（仅一句）、CAMIS 数值差异</td></tr>
+<tr><td>交互层</td><td>shiny、DT、plotly、teal、teal.slice、teal.modules.clinical</td><td>teal 其余 7 个核心子包、rhino</td></tr>
+<tr><td>递交 / 验证 / 环境</td><td>renv、pkglite、xportr、datasetjson、logrx、sessioninfo、riskmetric 全家、valtools、testthat</td><td>covr / lintr / styler、targets / here / fs、packrat（历史）</td></tr>
+</table>
+<p>换句话说：<strong>主力工具链本书都实跑过，缺口集中在"家族配套包"与"另一条技术路线"</strong>。若要把这张地图变成练习，优先补 <code class="inl">rbmi</code>（缺失数据）、<code class="inl">cards</code> / <code class="inl">cardx</code>（ARD）与 <code class="inl">sdtm.oak</code>（原始 EDC → SDTM）这三块 —— 它们分别对应本书目前最薄的三段流水线。</p>
+
+<h2 id="pm-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://pharmaverse.org/e2eclinical/tlg/">pharmaverse · TLGs 官方生态页</a> — 本页 TLG 分组的一手依据，列有 rtables / tfrmt / tidytlg / cardinal / TLG Catalog 等 <span class="tag">入门</span></li>
+<li><a href="https://pharmaverse.github.io/blog/posts/2026-11-03-roche-open-source-t/roche-open-source-tlg-packages-move-to-pharmaverse.html">Roche Open-Source TLG Packages Move to pharmaverse（2026-11-03）</a> — 15 个迁移包、Zero breaking changes、GitHub remote 改法 <span class="tag">必读</span></li>
+<li><a href="https://pharmaverse.github.io/blog/posts/2026-11-04-roche-appsilon-teal/roche-appsilon-teal.html">Roche and Appsilon … teal's Continued Development（2026-11-04）</a> — 共同版权、validated environments 属未来方向 <span class="tag">必读</span></li>
+<li><a href="https://github.com/insightsengineering/scda">insightsengineering/scda</a> — README 顶部 deprecated 原文，本页状态修正依据 <span class="tag">参考</span></li>
+<li><a href="https://cran.r-project.org/package=rbmi">CRAN · rbmi</a>、<a href="https://cran.r-project.org/package=crane">CRAN · crane</a>、<a href="https://cran.r-project.org/package=cardinalfda">CRAN · cardinalfda</a> — 版本、发布日期、维护者与仓库归属的一手元数据 <span class="tag">参考</span></li>
+<li><a href="https://pharmar.org/">R Validation Hub / pharmaR</a> — 白皮书、riskmetric / riskassessment、Early Adopter Guide <span class="tag">进阶</span></li>
+<li><a href="ch9-submission.html">本书第 9 章 · 监管递交与可复现性</a> 与 <a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a> — 把包版本、来源与执行日志变成审评端可重建的证据 <span class="tag">进阶</span></li>
+</ul>
+</section>
+
+<h2 id="pm-ex">练习</h2>
+<ol>
+<li>（易）打开本项目的 <code class="inl">renv.lock</code>（或 <a href="cases/c7-submission-bundle.html">C7</a> 生成的 <code class="inl">package_versions.tsv</code>），把其中每个包归到 PM.2–PM.8 的某一层，指出有没有落在"已弃用 / 历史"行里的包。</li>
+<li>（中）挑一个本页标记"仅登记"的包（建议 <code class="inl">cards</code> 或 <code class="inl">rbmi</code>），读它的官方 Get Started，写 5 行说明：解决什么问题、输入是什么、输出是什么、与本书已讲工具的边界、在你项目里会替换还是补上哪一步。</li>
+<li>（难）给你的验证环境写一份"包治理变更"检查单：覆盖 11-03 迁移的开发版 remote 核对、<code class="inl">renv.lock</code> 中 Source/Repository 字段的留证方式、SOP 变更控制触发条件，以及为什么"零破坏性变化"不能替代包风险评估（结合 <a href="ch9-submission.html">9.5</a>）。</li>
+</ol>
+<p class="lede">这张地图是<strong>索引</strong>，不是终点：真正把包变成能力，仍然要回到 <a href="ch2-cdisc.html">CH2</a> 的推导、<a href="ch4-tfl.html">CH4</a> 的 TLF、<a href="ch9-submission.html">CH9</a> 的递交口径与 <a href="cases/c7-submission-bundle.html">C7</a> 的实跑包。</p>
+</article></main>
+<aside class="toc">
+<a href="#pm-1">PM.1 怎么读</a>
+<a href="#pm-2">PM.2 数据层</a>
+<a href="#pm-3">PM.3 TLG 层</a>
+<a href="#pm-4">PM.4 统计层</a>
+<a href="#pm-5">PM.5 交互层</a>
+<a href="#pm-6">PM.6 递交追溯</a>
+<a href="#pm-7">PM.7 包验证</a>
+<a href="#pm-8">PM.8 环境工程</a>
+<a href="#pm-9">PM.9 治理迁移</a>
+<a href="#pm-10">PM.10 覆盖对照</a>
+<a href="#pm-res">章末资源</a>
+<a href="#pm-ex">练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

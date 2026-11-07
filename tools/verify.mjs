@@ -2,7 +2,8 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
-const files = ['index.html', ...readdirSync(ROOT).filter(f => /^ch\d-.*\.html$/.test(f)),
+/* 枚举根目录下全部 html（含 index 与非 chN 命名的工具页），避免新增页面漏检 */
+const files = [...readdirSync(ROOT).filter(f => f.endsWith('.html')),
   ...readdirSync(join(ROOT, 'cases')).filter(f => f.endsWith('.html')).map(f => 'cases/' + f)];
 let fail = 0;
 const bad = (f, msg) => { console.log(`FAIL ${f}: ${msg}`); fail++; };

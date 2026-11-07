@@ -20,6 +20,8 @@
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a href="ch8-community.html">8 社区与职业</a>
 <a href="ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">工具</div>
+<a href="package-map.html">◆ 药企常用 R 包地图</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -39,7 +41,7 @@
 <p>SAS 里你练手用的是 CDISC Pilot 那套永久库；R 世界没有 libname，练习数据以<strong>包</strong>的形式分发——装包即建库，加载即 SET。三个最常用的来源：</p>
 <ul>
 <li><strong>pharmaversesdtm</strong>：pharmaverse 家族自带的合成 SDTM 数据集（基于 CDISC Pilot 研究，正是你熟悉的那份数据），含 dm、ae、ex、vs、lb 等 60 余个域，是本书的默认练习数据。</li>
-<li><strong>scda</strong>（Synthetic CDISC Datasets for Application，insightsengineering/Roche 出品，见 <a href="https://github.com/insightsengineering/scda">GitHub 仓库</a>）：按年度归档的合成 SDTM + ADaM 成套数据，例如装 <code class="inl">scda2022</code> 后用 <code class="inl">scda2022::get_data("dm")</code> 取数。年度归档 + 版本固定，适合企业做回归测试与验证，概念上相当于"每年冻结一版的标准测试库"。</li>
+<li><strong>scda</strong>（Synthetic CDISC Datasets for Application，insightsengineering/Roche 出品，见 <a href="https://github.com/insightsengineering/scda">GitHub 仓库</a>）：按年度归档的合成 SDTM + ADaM 成套数据，例如装 <code class="inl">scda2022</code> 后用 <code class="inl">scda2022::get_data("dm")</code> 取数。年度归档 + 版本固定，概念上相当于"每年冻结一版的标准测试库"。<strong>但该仓库现已标注 deprecated、不再维护（2026-11-07 复核），不要再用于新项目</strong>，替代方案见 <a href="package-map.html">包地图 PM.9</a>。</li>
 <li><strong>synadam</strong>：CRAN 上的合成 ADaM 数据包，包内 <code class="inl">extdata/</code> 直接带 adsl.csv、adae.csv、adlb.csv，配合 admiral 的 <code class="inl">use_adam()</code> 工作流使用。</li>
 </ul>
 <pre class="code" style="white-space:pre"><code class="lang-r">library(pharmaversesdtm)
@@ -83,7 +85,7 @@ vars: STUDYID, USUBJID, SUBJID, SITEID, TRT01A, TRT01AN, AGE, AGEU, SEX, RACE, E
 <li><code class="inl">glimpse()</code>：dplyr 提供的"竖排 PROC CONTENTS"——每个变量一行，显示类型（<code class="inl">&lt;chr&gt;</code>/<code class="inl">&lt;dbl&gt;</code>）与前几个值；宽数据集（SDTM 动辄几十列）用它比 <code class="inl">str()</code> 舒服得多。</li>
 <li><code class="inl">system.file("extdata", ...)</code>：定位包安装目录下的文件，相当于用 SAS 的 <code class="inl">%sysfunc(pathname(...))</code> 找物理路径；synadam 的 ADaM 数据就在这里。</li>
 </ol></div>
-<div class="note">scda 是"概念块"：本机未安装且需要网络，正文只介绍用法。真实项目里三者可混用——pharmaversesdtm 做日常教学与单元测试，scda 做版本化回归，synadam 做 admiral 模板演练。</div>
+<div class="note">scda 是"概念块"：本机未安装且需要网络，正文只介绍用法；<strong>且已 deprecated、不再维护</strong>，此处保留只为解释"年度归档数据"这一历史设计。新项目请用 <code class="inl">pharmaversesdtm</code> / <code class="inl">pharmaverseadam</code>，需要版本冻结时把数据快照纳入自己的版本库与验证证据；synadam 做 admiral 模板演练。按包查替代方案见 <a href="package-map.html">包地图</a>。</div>
 
 <h2 id="s2-2">2.2 SDTM 在 R 中的样子</h2>
 <p>SDTM 的语义你全懂，这里只回答一个问题：<strong>同一份 DM 域，在 R 里"看"起来什么样</strong>？关键变量与 SAS 心智的对照：</p>
@@ -392,7 +394,7 @@ Not all Values Compared Equal
 <li><a href="https://pharmaverse.github.io/admiral/">admiral 官方文档</a> — 全部 derive_* 函数参考手册与 ADaM 模板脚本，写衍生的第一查询处 <span class="tag">进阶</span></li>
 <li><a href="https://pharmaverse.github.io/examples/">pharmaverse examples</a> — 从 SDTM 到 ADaM 到 TLF 的端到端示例代码库 <span class="tag">进阶</span></li>
 <li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">PharmaSUG 2026 ET-279</a> — Goodbye SAS, Hello R：CDISC 全流程实战论文 <span class="tag">进阶</span></li>
-<li><a href="https://github.com/insightsengineering/scda">scda</a> — 年度归档的合成 SDTM+ADaM 数据，版本化回归测试利器 <span class="tag">参考</span></li>
+<li><a href="https://github.com/insightsengineering/scda">scda</a> — 年度归档的合成 SDTM+ADaM 数据；<strong>已 deprecated、不再维护</strong>（2026-11-07 复核），仅作历史概念，替代见 <a href="package-map.html">包地图 PM.9</a> <span class="tag">参考</span></li>
 <li>本地精读：<a href="../PharmaSUG2026-Analysis/03-DS-SS-SI-数据标准与递交.md">03-DS-SS-SI-数据标准与递交.md</a> — PharmaSUG 2026 数据标准方向论文精读 <span class="tag">参考</span></li>
 </ul>
 </section>

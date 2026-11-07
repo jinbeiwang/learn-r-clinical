@@ -20,6 +20,8 @@
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a href="ch8-community.html">8 社区与职业</a>
 <a class="on" href="ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">工具</div>
+<a href="package-map.html">◆ 药企常用 R 包地图</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -206,6 +208,7 @@ class: pkg_cran_remote, pkg_remote, pkg_ref, environment
 <div class="note"><strong>数值可复现性是另一条独立的线。</strong>即使环境完全一致，BLAS、编译器、舍入规则也会让 R 与 SAS 结果有微小差异：PHUSE <strong>CAMIS</strong> 项目专门比对 R / SAS / East 在同一方法下的结果差异；Atorus 2026 为对齐 SAS 舍入专门写了函数并全表统一应用。经验做法是<strong>在 ADRG 中预先声明容差与舍入规则</strong>，并把「双编程 + <code class="inl">diffdf</code> 比对」的边界从"数据相同"扩展到"数值在容差内一致"。</div>
 
 <h2 id="s9-7">9.7 开源治理与 DevSecOps</h2>
+<div class="note"><strong>术语消歧：</strong>本节的「开源治理」指 CI/CD、依赖与凭据的<strong>工程治理</strong>（DevSecOps）；包的<strong>归属与维护方迁移</strong>（如 2026-11 罗氏 NEST 系列转入 pharmaverse）是另一回事，见 <a href="package-map.html">包地图 PM.9</a>。两者都可能触发变更控制，但所需的证据与处理方式并不相同。</div>
 <p>PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-292.pdf">ET-292</a> 把第 5 章的 CI 章节再往外推一层：当 R 从散脚本长成跨研究复用的包与流水线，风险不再只是"代码写错"，还包括凭据泄露、机器间结果漂移、依赖变更引入漏洞、非交互环境跑挂、日志/产物泄漏敏感数据。它给出的三层架构可直接贴到第 5 章 5.7 的 GitHub Actions YAML 旁边：</p>
 <table>
 <tr><th>层</th><th>实践</th><th>工具</th></tr>

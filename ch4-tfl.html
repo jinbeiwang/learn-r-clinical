@@ -20,6 +20,8 @@
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a href="ch8-community.html">8 社区与职业</a>
 <a href="ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">工具</div>
+<a href="package-map.html">◆ 药企常用 R 包地图</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -53,6 +55,7 @@
 </table>
 
 <h2 id="s4-2">4.2 rtables 基础：布局树实跑</h2>
+<div class="note"><strong>2026-11 更新：</strong>rtables、tern 与 formatters / rlistings / cards / cardx 原本由罗氏 NEST 在 <code class="inl">insightsengineering/</code> 下维护，<strong>2026-11-03 起迁入 pharmaverse 社区共治</strong>；CRAN 已发布版本零破坏性变化、R 代码不用改，只有 GitHub 开发版引用要改成 <code class="inl">pharmaverse/&lt;pkg&gt;</code>。完整 15 包清单与"别把公告读成验证承诺"的边界见 <a href="package-map.html">包地图 PM.9</a>。</div>
 <p>rtables 是 pharmaverse 的表格引擎（罗氏递交同款）。它的核心思想对 SAS 老手既陌生又亲切：<strong>先声明一棵"布局树"，再灌数据</strong>。<code class="inl">basic_table()</code> 是空树根，<code class="inl">split_rows_by()</code> 加一层行分割（相当于 CLASS/BY 变量），<code class="inl">analyze()</code> 挂叶子（对变量做汇总）。<code class="inl">build_table()</code> 才把数据浇进去。</p>
 <p>数据说明：<code class="inl">pharmaversesdtm</code> 包附带的是 SDTM 演示数据（ADSL 在姊妹包 pharmaverseadam 中），本章取 <code class="inl">dm</code> 前 60 行当"迷你 ADSL"教学，字段名完全同构（USUBJID/ARM/SEX/AGE/RACE）。</p>
 <pre class="code" style="white-space:pre"><code class="lang-r">library(rtables); library(dplyr)

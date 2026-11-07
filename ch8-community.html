@@ -20,6 +20,8 @@
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a class="on" href="ch8-community.html">8 社区与职业</a>
 <a href="ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">工具</div>
+<a href="package-map.html">◆ 药企常用 R 包地图</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -40,7 +42,7 @@
 <ul>
 <li><strong><a href="https://rinpharma.com">R/Pharma Summit</a></strong> — 每年一届的制药 R 专业会议，议题几乎全部围绕监管递交、CDISC 工作流与 GxP 验证。其官网公开的 Summit 圆桌笔记（尤其 AI 专场）是了解行业风向的最短路径。</li>
 <li><strong><a href="https://pharmarug.github.io">China PharmaRUG（中国制药 R 用户组）</a></strong> — 中文语境下最对口的社区：线上分享、案例讨论与国内药企/CRO 的落地经验。对身在国内、时区与语言都更友好的你，这是第一个应该"加入"而不只是"浏览"的组织。</li>
-<li><strong><a href="https://pharmaverse.github.io/blog/">pharmaverse blog</a></strong> — admiral、tern、teal 等核心包的官方博客，发布新版本能力、设计决策与真实工作流示例。想知道"官方推荐怎么做"，看这里比翻 Stack Overflow 可靠。</li>
+<li><strong><a href="https://pharmaverse.github.io/blog/">pharmaverse blog</a></strong> — admiral、tern、teal 等核心包的官方博客，发布新版本能力、设计决策与真实工作流示例；<strong>2026-11 起也是罗氏 NEST 系列（rtables / tern / cards / teal 全家桶）迁入 pharmaverse 的发布渠道</strong>，见 <a href="package-map.html">包地图 PM.9</a>。想知道"官方推荐怎么做"，看这里比翻 Stack Overflow 可靠。</li>
 <li><strong><a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions Working Group</a></strong> — 用 R 向 FDA 递交分析的工作组，<strong>Pilot 1–7</strong> 的完整记录（含 FDA 回函与 ADRG 模板）就是"R 能否过监管"这一问题的权威答案。递交相关的方法学争论，最终都会回到这里的文档。</li>
 <li><strong>useR! 会议</strong>（<a href="https://user2024.r-project.org">useR! 2024</a> 起每年举办） — R 社区的全球旗舰年会，虽非制药专属，但临床统计专场（clinrep 等议题）与 keynote 能帮你跳出行业视角看 R 整体演进。适合每年挑回放看两三场。</li>
 <li><strong><a href="https://phuse.global/">PHUSE</a> 与 <a href="https://phuse-org.github.io/OSDocuMeta/">OSDocuMeta</a></strong> — ADRG Package WG 给出审评员指南的填写规范；DVOST 下的「开源语言版本元数据」项目正在起草 ADRG R 填写指南与 <code class="inl">{adrgOS}</code> 包；另有 CAMIS（R/SAS/East 数值差异比对）与 MSA（端到端验证环境参考架构）。<strong>递交文档侧最该长期跟踪的组织</strong>。</li>
@@ -64,6 +66,7 @@
 <tr><td>Unleash the R-volution: A Blueprint for Building Package Validation Capabilities（ET-140）</td><td>PharmaSUG 2026</td><td>GxP 语境下验证"包 + 测试 + 锁环境"的完整框架，第 5 章 5.8 节的底稿；对比 riskmetric 与 risk.assessr。</td><td><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">PDF</a></td></tr>
 <tr><td>Engineering Secure and Reproducible R based Clinical Programming Systems（ET-292）</td><td>PharmaSUG 2026</td><td>DevSecOps 三层架构、renv lockfile 模板、共享容器基础镜像、oysteR CVE、LLM 治理与数值复现开放问题，第 9 章 9.7 的底稿。</td><td><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-292.pdf">PDF</a></td></tr>
 <tr><td>R Validation Hub 白皮书：A Risk-based Approach for Assessing R Package Accuracy within a Validated Infrastructure</td><td>pharmaR / R Validation Hub</td><td>包风险分级的理论来源；配套 2026-04 SCHARP 研究级评估案例与 2026-10 Early Adopter Guide。</td><td><a href="https://pharmar.org/white-paper/">白皮书</a></td></tr>
+<tr><td>Roche Open-Source TLG Packages Move to pharmaverse（2026-11-03）及续篇（11-04）</td><td>pharmaverse blog</td><td>15 个包的治理归属迁移、CRAN 零破坏性变化、GitHub remote 改法；判读"包治理变化"是否触发已锁定环境的变更控制，见 <a href="package-map.html">包地图 PM.9</a>。</td><td><a href="https://pharmaverse.github.io/blog/posts/2026-11-03-roche-open-source-t/roche-open-source-tlg-packages-move-to-pharmaverse.html">公告</a></td></tr>
 <tr><td>Reproducible Environments / Are Concerns About Open Source in Filings Solved?</td><td>R/Pharma 2026（EU Summit, 2026-10-05）</td><td>recipe 概念、Linux→Windows OS mismatch、锁定 vs 开放环境，以及对"顾虑是否解决"的 Not Fully 判断；第 9 章 9.6 的底稿。</td><td><a href="https://rinpharma.com/docs/summit/posts/2026-env-packages.html">圆桌笔记</a></td></tr>
 <tr><td>SAS to R: A Practical Bridge（TT-156）</td><td>PharmaSUG 2026</td><td>入门友好的"桥"文：不劝你立刻告别 SAS，而是教你两边并行的过渡姿势。</td><td><a href="https://pharmasug.org/proceedings/2026/TT/PharmaSUG-2026-TT-156.pdf">PDF</a></td></tr>
 <tr><td>中间设计文档法（AI-305）</td><td>PharmaSUG 2026</td><td>用"中间设计文档"约束 AI 辅助编程的输出，让生成的 R 代码可审、可验证。</td><td><a href="https://pharmasug.org/proceedings/2026/AI/PharmaSUG-2026-AI-305.pdf">PDF</a></td></tr>
@@ -158,6 +161,8 @@
 <li><a href="https://rinpharma.com">R/Pharma Summit</a> — 制药 R 年度会议，Summit 圆桌笔记免费公开 <span class="tag">参考</span></li>
 <li><a href="https://pharmarug.github.io">China PharmaRUG</a> — 中国制药 R 用户组，中文活动与讨论的第一入口 <span class="tag">入门</span></li>
 <li><a href="https://pharmaverse.github.io/blog/">pharmaverse blog</a> — admiral/tern/teal 官方博客，"官方推荐做法"的出处 <span class="tag">入门</span></li>
+<li><a href="https://pharmaverse.github.io/blog/posts/2026-11-03-roche-open-source-t/roche-open-source-tlg-packages-move-to-pharmaverse.html">Roche Open-Source TLG Packages Move to pharmaverse（2026-11-03）</a> 与 <a href="https://pharmaverse.github.io/blog/posts/2026-11-04-roche-appsilon-teal/roche-appsilon-teal.html">11-04 续篇</a> — 15 包迁移清单、zero breaking changes、共同版权与 validated environments 表述边界 <span class="tag">必读</span></li>
+<li><a href="package-map.html">药企常用 R 包地图</a> — 按流水线分组的包速查表、生态归属与本书覆盖对照 <span class="tag">入门</span></li>
 <li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">PharmaSUG 2026 ET-279 Goodbye SAS, Hello R</a> — R 的 CDISC 全流程实战，精读清单第一篇 <span class="tag">进阶</span></li>
 <li><a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions WG</a> — R 递交 FDA 的 Pilot 记录与方法学文档 <span class="tag">进阶</span></li>
 <li><a href="https://r-consortium.org/posts/johnson-and-johnsons-success-story-a-hybrid-r-sas-strategy-for-fda-submission/">J&amp;J 混合递交案例</a> — 团队迁移策略（8.5）的事实依据 <span class="tag">参考</span></li>
