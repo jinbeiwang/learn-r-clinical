@@ -19,6 +19,7 @@
 <a href="ch6-pkgdev.html">6 R 包开发</a>
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a class="on" href="ch8-community.html">8 社区与职业</a>
+<a href="ch9-submission.html">9 监管递交与可复现性</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -26,6 +27,7 @@
 <a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
 <a href="cases/c5-trials-landscape.html">C5 试验景观</a>
 <a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+<a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a>
 </aside>
 <main><article class="chap">
 <div class="crumb"><a href="index.html">全书目录</a> / 第 8 章</div>
@@ -33,16 +35,18 @@
 <h1>社区与职业：pharmaverse 地图</h1>
 <p class="lede">学会 R 只是入场券；知道自己属于哪个社区、读谁的论文、按什么节奏迁移团队，才决定你能在制药 R 这条路上走多远。本章把地图摊开给你。</p>
 
-<h2 id="s8-1">8.1 社区地图：值得长期跟踪的五个据点</h2>
-<p>制药 R 不是散落的博客圈，而是一个有会议、有工作组、有共享代码基础设施（pharmaverse）的成型生态。下面五个据点按"信息密度 × 与你的相关度"排序：</p>
+<h2 id="s8-1">8.1 社区地图：值得长期跟踪的七个据点</h2>
+<p>制药 R 不是散落的博客圈，而是一个有会议、有工作组、有共享代码基础设施（pharmaverse）的成型生态。下面七个据点按"信息密度 × 与你的相关度"排序；后两个是 2026 年补入的<strong>合规/递交侧</strong>入口：</p>
 <ul>
 <li><strong><a href="https://rinpharma.com">R/Pharma Summit</a></strong> — 每年一届的制药 R 专业会议，议题几乎全部围绕监管递交、CDISC 工作流与 GxP 验证。其官网公开的 Summit 圆桌笔记（尤其 AI 专场）是了解行业风向的最短路径。</li>
 <li><strong><a href="https://pharmarug.github.io">China PharmaRUG（中国制药 R 用户组）</a></strong> — 中文语境下最对口的社区：线上分享、案例讨论与国内药企/CRO 的落地经验。对身在国内、时区与语言都更友好的你，这是第一个应该"加入"而不只是"浏览"的组织。</li>
 <li><strong><a href="https://pharmaverse.github.io/blog/">pharmaverse blog</a></strong> — admiral、tern、teal 等核心包的官方博客，发布新版本能力、设计决策与真实工作流示例。想知道"官方推荐怎么做"，看这里比翻 Stack Overflow 可靠。</li>
-<li><strong><a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions Working Group</a></strong> — 用 R 向 FDA 递交分析的工作组，Pilot 1–5 的完整记录就是"R 能否过监管"这一问题的权威答案。递交相关的方法学争论，最终都会回到这里的文档。</li>
+<li><strong><a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions Working Group</a></strong> — 用 R 向 FDA 递交分析的工作组，<strong>Pilot 1–7</strong> 的完整记录（含 FDA 回函与 ADRG 模板）就是"R 能否过监管"这一问题的权威答案。递交相关的方法学争论，最终都会回到这里的文档。</li>
 <li><strong>useR! 会议</strong>（<a href="https://user2024.r-project.org">useR! 2024</a> 起每年举办） — R 社区的全球旗舰年会，虽非制药专属，但临床统计专场（clinrep 等议题）与 keynote 能帮你跳出行业视角看 R 整体演进。适合每年挑回放看两三场。</li>
+<li><strong><a href="https://phuse.global/">PHUSE</a> 与 <a href="https://phuse-org.github.io/OSDocuMeta/">OSDocuMeta</a></strong> — ADRG Package WG 给出审评员指南的填写规范；DVOST 下的「开源语言版本元数据」项目正在起草 ADRG R 填写指南与 <code class="inl">{adrgOS}</code> 包；另有 CAMIS（R/SAS/East 数值差异比对）与 MSA（端到端验证环境参考架构）。<strong>递交文档侧最该长期跟踪的组织</strong>。</li>
+<li><strong><a href="https://www.pharmar.org/">R Validation Hub（pharmaR）</a></strong> — 跨公司协作，白皮书《A Risk-based Approach for Assessing R Package Accuracy within a Validated Infrastructure》+ <code class="inl">riskmetric</code> / <code class="inl">riskassessment</code>；2026-10 发布 Early Adopter Guide，并在推进 regulatory-ready 包仓库。包验证侧的第一入口，见 <a href="ch9-submission.html">9.5</a>。</li>
 </ul>
-<div class="note">跟踪方式建议：给 China PharmaRUG 订阅邮件/微信渠道，给 pharmaverse blog 与 Submissions WG 加 RSS 或每月固定半小时浏览，会议（R/Pharma、useR!）看议程挑回放。社区参与本身也是简历素材——见 8.6。</div>
+<div class="note">跟踪方式建议：给 China PharmaRUG 订阅邮件/微信渠道，给 pharmaverse blog 与 Submissions WG 加 RSS 或每月固定半小时浏览，PHUSE 工作组看季度报告与白皮书，会议（R/Pharma、PHUSE Connect、useR!）看议程挑回放。<a href="https://rinpharma.com/docs/summit/posts/2026-eu-open-source-submissions.html">R/Pharma EU Summit 2026 圆桌</a>对「开源递交的顾虑解决了吗」的回答是 <em>Not Fully</em>，值得和 <a href="https://rinpharma.com/docs/summit/posts/2026-env-packages.html">Reproducible Environments</a> 对照读。社区参与本身也是简历素材——见 8.6。</div>
 <div class="quiz" data-answer="B">
 <p class="quiz-q">测验：想跟踪中国制药 R 用户组的活动与中文分享，应关注哪个社区？</p>
 <button class="quiz-opt" data-opt="A">useR! 主会</button>
@@ -52,12 +56,15 @@
 </div>
 
 <h2 id="s8-2">8.2 会议论文精读清单</h2>
-<p>下面 8 篇是"从 SAS 转身到 R"这条主线上最值得逐字精读的材料：前 5 篇来自 PharmaSUG 2026，后 3 篇是圆桌记录与企业案例。建议按表内顺序读——先立信心（转型全景），再学桥接（工作流），最后补验证与 AI 视角。</p>
+<p>下面是"从 SAS 转身到 R"这条主线上最值得逐字精读的材料：PharmaSUG 2026 论文、企业案例、圆桌记录与验证白皮书。建议按表内顺序读——先立信心（转型全景），再学桥接（工作流），最后补验证、可复现与 AI 视角。</p>
 <table>
 <tr><th>论文 / 材料</th><th>出处</th><th>一句话理由</th><th>链接</th></tr>
 <tr><td>Goodbye SAS, Hello R: Practical Workflows for CDISC（ET-279）</td><td>PharmaSUG 2026</td><td>从 SAS 老兵视角完整走一遍 R 的 CDISC 全流程，是本书第 2 章的"行业原版"。</td><td><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">PDF</a></td></tr>
 <tr><td>SAS-to-R 实用工作流（ET-179）</td><td>PharmaSUG 2026</td><td>把 SAS↔R 概念映射落到日常程序层面，与第 0 章 0.5 映射表互为印证。</td><td><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-179.pdf">PDF</a></td></tr>
-<tr><td>R 包验证框架（ET-140）</td><td>PharmaSUG 2026</td><td>GxP 语境下验证"包 + 测试 + 锁环境"的完整框架，第 5 章 5.8 节的底稿。</td><td><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">PDF</a></td></tr>
+<tr><td>Unleash the R-volution: A Blueprint for Building Package Validation Capabilities（ET-140）</td><td>PharmaSUG 2026</td><td>GxP 语境下验证"包 + 测试 + 锁环境"的完整框架，第 5 章 5.8 节的底稿；对比 riskmetric 与 risk.assessr。</td><td><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">PDF</a></td></tr>
+<tr><td>Engineering Secure and Reproducible R based Clinical Programming Systems（ET-292）</td><td>PharmaSUG 2026</td><td>DevSecOps 三层架构、renv lockfile 模板、共享容器基础镜像、oysteR CVE、LLM 治理与数值复现开放问题，第 9 章 9.7 的底稿。</td><td><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-292.pdf">PDF</a></td></tr>
+<tr><td>R Validation Hub 白皮书：A Risk-based Approach for Assessing R Package Accuracy within a Validated Infrastructure</td><td>pharmaR / R Validation Hub</td><td>包风险分级的理论来源；配套 2026-04 SCHARP 研究级评估案例与 2026-10 Early Adopter Guide。</td><td><a href="https://pharmar.org/white-paper/">白皮书</a></td></tr>
+<tr><td>Reproducible Environments / Are Concerns About Open Source in Filings Solved?</td><td>R/Pharma 2026（EU Summit, 2026-10-05）</td><td>recipe 概念、Linux→Windows OS mismatch、锁定 vs 开放环境，以及对"顾虑是否解决"的 Not Fully 判断；第 9 章 9.6 的底稿。</td><td><a href="https://rinpharma.com/docs/summit/posts/2026-env-packages.html">圆桌笔记</a></td></tr>
 <tr><td>SAS to R: A Practical Bridge（TT-156）</td><td>PharmaSUG 2026</td><td>入门友好的"桥"文：不劝你立刻告别 SAS，而是教你两边并行的过渡姿势。</td><td><a href="https://pharmasug.org/proceedings/2026/TT/PharmaSUG-2026-TT-156.pdf">PDF</a></td></tr>
 <tr><td>中间设计文档法（AI-305）</td><td>PharmaSUG 2026</td><td>用"中间设计文档"约束 AI 辅助编程的输出，让生成的 R 代码可审、可验证。</td><td><a href="https://pharmasug.org/proceedings/2026/AI/PharmaSUG-2026-AI-305.pdf">PDF</a></td></tr>
 <tr><td>AI 圆桌记录（2024）</td><td>R/Pharma Summit 2024</td><td>行业首批关于"AI 会怎样改变统计编程岗位"的公开讨论，观点原始、信息量大。</td><td><a href="https://rinpharma.com/docs/summit/posts/2024-ai.html">笔记</a></td></tr>
@@ -82,6 +89,7 @@
 <tr><td>ch6 包开发</td><td>02-AD track（工具化案例）</td><td>pharmaverse 包开发协作模式</td></tr>
 <tr><td>ch7 Shiny</td><td>08-RB track（交互应用）</td><td>teal / Shiny 生态主线</td></tr>
 <tr><td>ch8 社区与职业（本章）</td><td>01-AI track；深读 1/2（对应 AI-305 与两场 AI 圆桌）</td><td>AI 影响分析章节（岗位与工作流重塑）</td></tr>
+<tr><td>ch9 递交与可复现性（进阶专题）</td><td>09-QC / 01-AI track；ET-292、ET-140</td><td>验证与合规主线 + R Validation Hub / R Consortium 动态</td></tr>
 </table>
 
 <h2 id="s8-4">8.4 90 天计划：细化到周</h2>
@@ -101,7 +109,7 @@
 <tr><td>11</td><td>teal 探索器 + 开始精读</td><td>部署 C6；按 8.2 清单精读第 1 篇（ET-279）并写摘要</td><td>ch8 / C6</td></tr>
 <tr><td>12</td><td>复盘与职业输出</td><td>再精读 2 篇（TT-156、J&amp;J 案例）写摘要；完成 90 天复盘 + 个人/团队迁移计划一页纸</td><td>ch8</td></tr>
 </table>
-<div class="note">落后了怎么办：优先砍"产出"的规模（例如 C2 只复现主图），不要砍周与周的顺序——第 4、8、9 周的全链路、测试、包化是后面一切的地基。</div>
+<div class="note">落后了怎么办：优先砍"产出"的规模（例如 C2 只复现主图），不要砍周与周的顺序——第 4、8、9 周的全链路、测试、包化是后面一切的地基。<strong>12 周之后还有一条进阶线</strong>：ch9 + C7（监管递交与可复现性），产出是一套可核对的递交级证据链；见<a href="index.html#path">首页 90 天路径</a>的「进阶」行。</div>
 
 <h2 id="s8-5">8.5 团队迁移策略：混合模式起步</h2>
 <p>个人转型靠自律，团队转型靠策略。目前最被验证的路径是 <a href="https://r-consortium.org/posts/johnson-and-johnsons-success-story-a-hybrid-r-sas-strategy-for-fda-submission/">J&amp;J 混合模式</a>：<strong>ADaM 数据集继续用成熟 SAS 流程生产，TLF 报告端切换到 R（rtables + Quarto）</strong>，以 R 包 + renv.lock 形式随 eCTD 递交。它的聪明之处在于：数据端风险最高的部分不动，先在"输出层"这个容易双编程核对的环节建立 R 的信任。</p>
@@ -111,7 +119,8 @@
 <li><strong>时间裕度</strong> — 不在关键递交路径上；有并行 SAS 版本兜底，R 版做双编程比对。</li>
 <li><strong>有 R 同伴</strong> — 至少两人组队（一人写、一人审），避免"全团队只有一个人会 R"的单点风险。</li>
 </ul>
-<p>试点跑通后，把第 5 章的验证清单<strong>升格为团队 SOP</strong>：valtools 验证计划模板、testthat 断言库、diffdf 双编程比对流程、renv.lock 递交附录规范——这些资产在后续每个项目里直接复用，迁移成本逐项目递减。</p>
+<p>试点跑通后，把第 5 章的验证清单<strong>升格为团队 SOP</strong>：valtools 验证计划模板、testthat 断言库、diffdf 双编程比对流程、ADRG 递交附录规范——这些资产在后续每个项目里直接复用，迁移成本逐项目递减。</p>
+<div class="note"><strong>2026 补充 · ADRG 附录到底写什么：</strong>J&amp;J 在 ADRG 里专门加了 <em>"Set-up R environment and Analysis"</em> 附录：① 用脚本从 CRAN/GitHub 装回指定包版本；② <strong>在审评员本机生成 <code class="inl">renv.lock</code></strong>（而不是把申办方 Linux 上的锁文件搬过去）；③ 程序按当时 eCTD 要求转 <code class="inl">.txt</code>——这一步在 <strong>2025-08 eCTD 文件格式规范 v9.3</strong> 之后<strong>已非必需</strong>，因为 R 相关扩展名与 <code class="inl">.zip</code> / <code class="inl">.html</code> 已被接受。完整七层证据链、ADRG 中文模板与 C7 实操见 <a href="ch9-submission.html">第 9 章 9.3 / 9.4</a>。</div>
 <div class="pitfall"><strong>SAS 误区：</strong>把迁移理解成"把所有 SAS 宏逐个改写成 R 函数"。R 世界的迁移单元是"被验证的工作流"（包 + 测试 + 锁环境），而不是脚本对照翻译；逐宏改写会得到一堆没有测试、没有文档、无法审计的散脚本，比留在 SAS 更危险。</div>
 <div class="note">最重要的一条纪律：<strong>不要全栈一次性迁移</strong>。数据管理、统计编程、报告、递交四个环节同时换语言，等于把四个风险叠乘。J&amp;J 用混合策略走了数年才逐步扩大 R 的范围——你的团队没有理由更快。</div>
 
@@ -129,7 +138,7 @@
 <li><strong>admiral 生态</strong> — admiral 与领域扩展包（admiralonco 等）的结构、pharmaverse 模板（admiral templates）用法。</li>
 <li><strong>rtables</strong> — 分析型表格的 split/format 模型，与 ODS RTF 或 gtsummary 的取舍（第 4 章）。</li>
 <li><strong>验证</strong> — GxP 语境下 R 的验证证据链：valtools、testthat、V 模型到"包 + 测试 + 锁环境"的平移（第 5 章）。</li>
-<li><strong>renv</strong> — lock/snapshot/restore 工作流，renv.lock 在递交附录中的角色（第 0 章）。</li>
+<li><strong>renv</strong> — lock/snapshot/restore 工作流，renv.lock 在递交附录中的角色，以及为什么跨 OS 要"重建"而非"搬运"（第 0 章 / 第 9 章 9.3）。</li>
 <li><strong>CI</strong> — GitHub Actions/GitLab CI 上跑 R CMD check 与 testthat 的经验，"全绿"作为放行门禁。</li>
 <li><strong>生存分析</strong> — survival/survminer：KM 曲线、log-rank 检验、Cox 模型与 risk table 的生产级做法（第 3 章 / C2）。</li>
 <li><strong>MMRM</strong> — 混合效应重复测量模型在 R 中的实现（mmrm/lme4 + emmeans）与 SAS PROC MIXED 结果的对齐。</li>
@@ -137,6 +146,9 @@
 <li><strong>Shiny 验证</strong> — 交互应用在 GxP 边界内外的定位，shinyvalidate 与 teal 模块化框架（第 7 章 / C6）。</li>
 <li><strong>包开发</strong> — usethis/devtools/roxygen2/pkgdown 全流程，内部包仓库与版本策略（第 6 章）。</li>
 <li><strong>社区参与</strong> — 给 pharmaverse 仓库提过 issue/PR、在 PharmaSUG/useR!/China PharmaRUG 做过分享或投稿——这条是区分"会 R"与"在 R 生态里"的关键。</li>
+<li><strong>ADRG 与递交包</strong> — ADRG §7/§9.1 写什么、<code class="inl">pkglite</code> 与 <code class="inl">.zip</code> 两种闭源包方案、ASCII 源码要求、XPT 与 Dataset-JSON 双轨（第 9 章 / C7）。</li>
+<li><strong>包风险与验证</strong> — R Validation Hub 白皮书、<code class="inl">riskmetric</code> 的 <code class="inl">pkg_ref → pkg_assess → pkg_score</code>、<code class="inl">riskassessment</code> 与 <code class="inl">risk.assessr</code> 的区别、断网环境里 NA 指标怎么处理（第 9 章 9.5）。</li>
+<li><strong>可复现边界</strong> — Pilot 4 的 webR / 容器 FDA 回函结论、Linux→Windows recipe、CAMIS 数值差异与可接受容差（第 9 章 9.6）。</li>
 </ol>
 <div class="note">给转型者的定心丸：招聘方看重的从来不是"R 写得多溜"，而是"懂监管语境的编程能力 + R 工程化素养"的组合。你的 SAS 年限不是沉没成本，是稀缺资产——生态里会 rtables 的人不少，同时能把双编程纪律和递交要求讲清楚的人不多。</div>
 
@@ -149,6 +161,9 @@
 <li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">PharmaSUG 2026 ET-279 Goodbye SAS, Hello R</a> — R 的 CDISC 全流程实战，精读清单第一篇 <span class="tag">进阶</span></li>
 <li><a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions WG</a> — R 递交 FDA 的 Pilot 记录与方法学文档 <span class="tag">进阶</span></li>
 <li><a href="https://r-consortium.org/posts/johnson-and-johnsons-success-story-a-hybrid-r-sas-strategy-for-fda-submission/">J&amp;J 混合递交案例</a> — 团队迁移策略（8.5）的事实依据 <span class="tag">参考</span></li>
+<li><a href="https://phuse.global/">PHUSE</a> / <a href="https://phuse-org.github.io/OSDocuMeta/">OSDocuMeta</a> — ADRG 与开源版本元数据工作组 <span class="tag">进阶</span></li>
+<li><a href="https://www.pharmar.org/">R Validation Hub</a> — 包风险分级白皮书与工具集 <span class="tag">进阶</span></li>
+<li><a href="ch9-submission.html">第 9 章 监管递交与可复现性</a> 与 <a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a> — 本站进阶专题与配套实操 <span class="tag">进阶</span></li>
 </ul>
 </section>
 <h2 id="s8-ex">本章练习</h2>
@@ -157,7 +172,7 @@
 <li>（中）精读 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">ET-279</a>，写 300 字中文摘要：作者的迁移路径、用到的核心包、你认为最值得团队借鉴的一个做法。</li>
 <li>（难）在团队内做一次 30 分钟 R 分享（题目自选，如"我用 admiral 重写了 Table 1"），留存 slides 与示例代码仓库链接——这就是 8.6 第 12 条面试素材的第一件。</li>
 </ol>
-<p class="lede">全书到此结束。地图已经摊开：社区在哪、论文读哪几篇、12 周怎么走、团队怎么迁、职业往哪去。剩下的事情只有一件——从第 1 周的那个 renv 项目开始，把它做完。</p>
+<p class="lede">主线九章到此结束。地图已经摊开：社区在哪、论文读哪几篇、12 周怎么走、团队怎么迁、职业往哪去。<strong>如果你要把 R 真正送进递交包，请继续读进阶专题 <a href="ch9-submission.html">第 9 章「监管递交与可复现性」</a> 并动手跑 <a href="cases/c7-submission-bundle.html">C7</a></strong>——剩下的事情只有一件：从第 1 周的那个 renv 项目开始，把它做完。</p>
 </article></main>
 <aside class="toc">
 <a href="#s8-1">8.1 社区地图</a>

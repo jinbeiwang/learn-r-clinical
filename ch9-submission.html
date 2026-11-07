@@ -1,0 +1,268 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 9 章 监管递交与可复现性 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="assets/site.css"><link rel="icon" href="assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="index.html"><img src="assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="index.html#toc">全书目录</a><a href="index.html#path">90 天路径</a><a href="ch8-community.html">社区与职业</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="ch0-environment.html">0 起步与环境</a>
+<a href="ch1-r-basics.html">1 R 语言基础</a>
+<a href="ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="ch3-stats.html">3 统计分析</a>
+<a href="ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="ch6-pkgdev.html">6 R 包开发</a>
+<a href="ch7-shiny.html">7 Shiny 与交互</a>
+<a href="ch8-community.html">8 社区与职业</a>
+<a class="on" href="ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">案例</div>
+<a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="cases/c2-survival.html">C2 生存分析</a>
+<a href="cases/c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
+<a href="cases/c5-trials-landscape.html">C5 试验景观</a>
+<a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+<a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="index.html">全书目录</a> / 进阶专题 第 9 章</div>
+<div class="chapnum">09</div>
+<h1>监管递交与可复现性</h1>
+<p class="lede">第 0 章教你用 renv 锁住项目，第 4 章教你留追溯清单，第 5 章教你做包验证。本章把这三件事放到同一个问题下重新问一遍：<strong>审评员拿到你的递交包，在另一台机器、另一个操作系统上，能不能把结果重跑出来？</strong></p>
+<div class="note">本章是主线九章之后的<strong>进阶专题</strong>，不重排原有编号。配套可运行案例见 <a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a>；本章所有标注「实跑捕获」的输出都来自 R 4.5.0 真实运行。</div>
+
+<h2 id="s9-1">9.1 监管口径：谁验证、验证什么</h2>
+<p>先把最容易误读的一句话钉死：<strong>FDA 不"验证"也不"批准"任何编程语言</strong>。FDA Statistical Software Clarifying Statement 的立场是软件须 reliable，不指定 SAS 或 R；R Consortium 的 Pilot 是<strong>可行性证据</strong>——公开递交包被审评员接收并复现，而不是「R 拿到了认证」。Pilot 3 的反馈里写得很直白：选择足够可靠的开源包，责任在申办方。</p>
+<p>所以验证对象从来不是语言，而是这三层（与第 5 章 5.8 的 GAMP5 表对齐）：</p>
+<table>
+<tr><th>层</th><th>验证对象</th><th>R 世界的证据</th></tr>
+<tr><td>流程</td><td>脚本、推导逻辑、双编程与 QC</td><td><code class="inl">testthat</code> 断言、<code class="inl">diffdf</code> 比对、spec 双向链接、评审记录</td></tr>
+<tr><td>环境</td><td>钉死且可重建的计算环境</td><td><code class="inl">renv.lock</code>、<code class="inl">sessionInfo()</code>、R/Rtools 版本、必要时容器镜像</td></tr>
+<tr><td>控制</td><td>变更、权限、审计追踪、数据完整性</td><td>Git commit、CI 日志、<code class="inl">logrx</code> 执行日志、ALCOA+、Part 11 电子记录控制</td></tr>
+</table>
+<p>对<strong>临床统计编程</strong>真正对口的是下面这一组，别被会议论文里的"法规趋同"带偏：</p>
+<table>
+<tr><th>文件</th><th>对临床统计编程的作用</th></tr>
+<tr><td>ICH E6(R2)/(R3) GCP §5.5</td><td>电子数据处理系统的验证、SOP、审计追踪与数据完整性（最直接的上位要求）</td></tr>
+<tr><td>21 CFR Part 11</td><td>电子记录与电子签名：系统验证、访问控制、审计追踪、记录保全</td></tr>
+<tr><td>ICH E9 / E9(R1)</td><td>统计原则与 estimand，决定「什么算需要复现的结果」</td></tr>
+<tr><td>FDA Study Data Technical Conformance Guide v5.7</td><td>§4.1.2.10 要求递交源码为<strong>单字节 ASCII 文本</strong>，并在 ADRG 写明软件版本与操作系统；§2.3 说明 ADRG 的定位</td></tr>
+<tr><td>eCTD 规范 / Data Standards Catalog</td><td>文件格式、模块与传输；见 9.2 的版本号</td></tr>
+<tr><td>GAMP 5 2nd ed（ISPE 行业指南，非法规）</td><td>风险分类与生命周期框架，可平移到临床系统；不是法条</td></tr>
+<tr><td>ICH M11 / CDISC / Define-XML / Pinnacle 21</td><td>数据标准与 conformity 校验，见第 2、4 章</td></tr>
+</table>
+<div class="note"><strong>趋势提示（非正式适用依据）：</strong>PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-292.pdf">ET-292</a> 把 FDA CSA、EU GMP Annex 11 修订草案与 Annex 22（AI）并列为"监管趋同"信号，主张风险化、证据驱动的软件保证。但三者<strong>都不是临床统计编程的对口 guidance</strong>：FDA CSA 最终版（2026-02，取代 2025-09）正式范围是<strong>医疗器械生产与质量管理体系软件</strong>，且不改变 Part 11 义务；Annex 11 现行 2011 版适用于<strong>药品 GMP</strong> 计算机化系统，2025-07 修订草案尚无最终版与生效日；Annex 22 是 GMP 下 AI 治理的<strong>草案</strong>。此处仅记录行业理念迁移，<strong>不得作为临床统计编程的合规依据引用</strong>；实际项目以公司 QA/RA 与当期法规为准。</div>
+<div class="pitfall"><strong>SAS 误区：</strong>把「R 已被 FDA 接受」当成「我这套脚本自动合规」。SAS 也不是被 FDA 逐项目验证的；SAS 的优势是公司统一环境 + PROC 版本随 SAS 版本整体锁定。R 的包版本是分散的，所以你<strong>必须自己造出等价的证据链</strong>——这正是本章剩下的部分。</div>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验 1：关于「R 能否用于 FDA 递交」，下列哪句最准确？</p>
+<button class="quiz-opt" data-opt="A">FDA 已认证 R 语言及其 CRAN 包可用于递交</button>
+<button class="quiz-opt" data-opt="B">FDA 不验证语言，Pilot 证明可行性；软件可靠性与流程验证的责任在申办方</button>
+<button class="quiz-opt" data-opt="C">只有把 R 脚本转成 SAS 才能递交</button>
+<div class="quiz-exp">选 B。Statisticial Software Clarifying Statement 只要求软件 reliable、不指定语言；Pilot 1–5 的公开递交包被审评员接收并复现，是可行性证据而非认证。R Consortium 在 Pilot 3 反馈里明确：由申办方负责选择足够可靠的开源包。</div>
+</div>
+
+<h2 id="s9-2">9.2 七个 Pilot 与 2026 时间线</h2>
+<p>第 0 章 0.1 写的是「Pilot 1–5」，那是 2025 年的口径。截至 2026 年，<a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions WG</a> 已有<strong>七个 Pilot</strong>。把时间线读一遍，你会发现每个 Pilot 都在回答同一个问题的不同侧面：<em>审评员怎么把结果跑出来</em>。</p>
+<table>
+<tr><th>Pilot</th><th>年份</th><th>递交内容</th><th>状态与对复现性的启示</th></tr>
+<tr><td>1</td><td>2021–22</td><td>R 产出的 Tables / Figures</td><td>完成。首创 ADRG 附录指导审评员装包重跑</td></tr>
+<tr><td>2</td><td>2022–24</td><td>同一批 TLF 改为 Shiny App</td><td>完成。交互应用也要能复现</td></tr>
+<tr><td>3</td><td>2023–24</td><td>R 同时产出 ADaM + TLF</td><td>完成。<a href="https://github.com/RConsortium/submissions-pilot3-adam-to-fda/blob/main/m5/datasets/rconsortiumpilot3/analysis/adam/datasets/adrg.pdf">ADRG</a> §7 写 R 4.2.3/Linux，§9.1 写环境重建；<code class="inl">pkglite</code> 与 <code class="inl">.zip</code> 两种闭源包方案</td></tr>
+<tr><td>4</td><td>2024–26</td><td>WebAssembly（webR）+ 容器</td><td>2026-05 收到 FDA 回函：两者技术可行；<strong>webR 仍需 renv 还原依赖并起一个 web server</strong>；Docker Desktop 需 WSL、FDA 环境安装受限（许可问题）且构建性能不稳，<strong>容器未消除手工配置</strong>；审评员更偏好浏览器即用的 WebAssembly</td></tr>
+<tr><td>5</td><td>2025–26</td><td>全部 XPT 换成 Dataset-JSON</td><td>2025 秋递交，2026-01 按 FDA 意见重递（去掉 rds 中间文件、R 固定 4.4.3、ADRG 补 Rtools 版本匹配说明）。<strong>Dataset-JSON v1.1 当时不在 Pinnacle 21 支持内</strong>，改用 XPT 完成验证并写入 ADRG</td></tr>
+<tr><td>6</td><td>2026–</td><td>扩充 ADaM / Display 程序 + AI 辅助生成</td><td>2026-01 启动，<strong>不向 FDA 递交</strong>，为后续 Pilot 铺程序量</td></tr>
+<tr><td>7</td><td>2026–</td><td>符合现行 CDISC 标准的合成基准数据</td><td>2026-01 启动，补「缺公开、够复杂、可公开复现的试验数据」这个长期缺口</td></tr>
+</table>
+<p>eCTD 侧的版本号也该精确化，别再笼统写"2025-08 指南更新"：</p>
+<ul>
+<li><strong>Specifications for File Format Types Using eCTD Specifications v9.3（2025-08-20）</strong>：新增 <code class="inl">.rds / .rdb / .rdx / .rdata / .rda / .md / .rd</code>，扩展 <code class="inl">.zip / .html</code> 允许递交完整 R 包。所以 J&J 当年把 <code class="inl">.R</code> 转 <code class="inl">.txt</code> 的做法，<strong>此后已非必需</strong>（但 ASCII 源码与 ADRG 说明仍是好习惯）。</li>
+<li><strong>eCTD v4.0</strong> 自 2024-09-16 起 CDER/CBER 接受新申请；<strong>Technical Conformance Guide v1.5（2026-07-09）</strong>；2026-10-16 起支持 v3.2.2 → v4.0 Forward Compatibility。</li>
+</ul>
+<div class="note">企业实证：J&amp;J 的「SAS 做 ADaM + R 做 TLF」混合策略已获批，其 <a href="https://r-consortium.org/posts/johnson-and-johnsons-success-story-a-hybrid-r-sas-strategy-for-fda-submission/">ADRG 附录 "Set-up R environment and Analysis"</a> 是本章 9.4 的原型；Atorus 在 PharmaSUG 2026 用验证过的 R 重建 FDA Standard Safety Tables &amp; Figures，并与 SAS 输出做<strong>数值等价</strong>比对（为对齐舍入行为专门写了函数）。</div>
+
+<h2 id="s9-3">9.3 七层环境复现证据链</h2>
+<p>把第 4 章 4.8 的追溯清单抬到递交级，会得到下面这条链。<strong>任何一层缺证，审评员的重跑就可能停在那一步。</strong></p>
+<table>
+<tr><th>层</th><th>锁什么</th><th>工具 / 产物</th><th>常见失效点</th></tr>
+<tr><td>L1 代码</td><td>精确的程序版本</td><td>Git commit SHA、<code class="inl">.txt</code> 源码</td><td>只写"最新版"</td></tr>
+<tr><td>L2 包</td><td>每个包及其来源、版本</td><td><code class="inl">renv.lock</code>、<code class="inl">package_versions.tsv</code>、<code class="inl">pkglite</code> / <code class="inl">.zip</code> 闭源包</td><td>把 sponsor 端 lockfile 直接搬给审评员</td></tr>
+<tr><td>L3 运行时</td><td>R 版本、Rtools、OS、BLAS</td><td><code class="inl">sessionInfo()</code>、ADRG §7</td><td>Rtools 与 R 版本不匹配</td></tr>
+<tr><td>L4 运行环境</td><td>系统库与依赖整体</td><td>Docker / Podman 镜像、webR</td><td>审评端装不上容器（见 9.6）</td></tr>
+<tr><td>L5 数据</td><td>输入与产物的字节级身份</td><td>md5、只读输入快照、XPT v5 / Dataset-JSON</td><td>中间 rds 文件未清理、输入可写</td></tr>
+<tr><td>L6 执行</td><td>谁在何时跑了什么</td><td><code class="inl">logrx</code> / <code class="inl">logger</code> 日志、stdout+stderr</td><td>只有控制台输出，没落盘</td></tr>
+<tr><td>L7 文档</td><td>把上面六层讲清楚</td><td><strong>ADRG</strong>、<code class="inl">programTOC</code>、Define-XML</td><td>ADRG 只写"用 R 完成"</td></tr>
+</table>
+<pre class="code" style="white-space:pre"><code class="lang-r"># 在审评端重建环境（不是搬运申办方的 lockfile）
+source("programs/00_install_packages.R")   # 从 CRAN / 内部仓库装指定版本
+renv::init(bare = TRUE)
+renv::snapshot()                            # 在审评员本机生成 renv.lock
+writeLines(capture.output(sessionInfo()), "logs/session.txt")</code></pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>先按 ADRG 的包清单装指定版本。<strong>Linux 上生成的 <code class="inl">renv.lock</code> 不能原样搬到 Windows</strong>：J&amp;J 的做法是给安装脚本，让审评员在本机 snapshot 出自己的锁文件。</li>
+<li><code class="inl">init(bare=TRUE)</code> 建干净私库，<code class="inl">snapshot()</code> 冻结实际装到的版本——这一步的产物本身就是「环境已复现」的证据。</li>
+<li><code class="inl">sessionInfo()</code> 补上 lockfile 不含的部分：R 版本、平台、locale、已加载包。</li>
+</ol></div>
+<div class="note"><strong>为什么 R 版本要事先沟通：</strong>Pilot 3 的教训之一是跨环境 R 版本不一致；Pilot 5 把 R 固定为 4.4.3，并在 ADRG 里补上「Rtools 版本须与所用 R 版本对应」的说明。递交前的 pre-submission correspondence 就该把这套运行时说清楚。</div>
+<div class="quiz" data-answer="C">
+<p class="quiz-q">测验 2：申办方在 Linux 上开发，审评员用 Windows，最稳妥的做法是？</p>
+<button class="quiz-opt" data-opt="A">把 Linux 上的 renv.lock 原样随包递交，让审评员直接 restore</button>
+<button class="quiz-opt" data-opt="B">只递交 .R 脚本，让审评员自行安装最新版包</button>
+<button class="quiz-opt" data-opt="C">递交带精确版本的安装脚本与 ADRG 指示，由审评员在本机重建 lockfile</button>
+<div class="quiz-exp">选 C。lockfile 记录的是特定 OS/库路径下的解析结果，跨 OS 不可搬运；J&amp;J 的 ADRG 附录与 R/Pharma 2026「recipe」讨论都指向同一结论——递交的是<strong>能重建环境的配方</strong>，不是一份冻结的二进制状态。</div>
+</div>
+
+<h2 id="s9-4">9.4 ADRG：从「附录」到「标准文档」</h2>
+<p>ADRG（Analysis Data Reviewer's Guide）是审评员读分析数据集与程序的第一入口。PHUSE 的 <a href="https://advance.hub.phuse.global/wiki/spaces/WEL/pages/26804660/Analysis+Data+Reviewer+s+Guide+ADRG+Package">ADRG Package WG</a> 提供填写指南；其 <a href="https://phuse-org.github.io/OSDocuMeta/">OSDocuMeta / Version Metadata for Open-Source Languages</a> 项目专门解决一个新问题：SAS 时代 ADRG 里写「SAS 9.4」就够了，R 时代必须逐个包声明版本。该项目已起草 ADRG R 填写指南、示例与 <code class="inl">{adrgOS}</code> 包（Quarto 模板 + 章节填充函数，仍在评审中，依赖 PHUSE ADRG 标准组）。</p>
+<p><a href="https://pharmaverse.github.io/examples/esub/esub.html">pharmaverse eSubmission</a> 建议 ADRG 至少写明五项：</p>
+<ol>
+<li>使用的 <strong>R 版本</strong>；</li>
+<li>主要开源 R 包的描述、<strong>各自版本</strong>、获取来源（尤其非 CRAN 来源）；</li>
+<li>所用<strong>闭源包</strong>的描述；</li>
+<li>R 与指定包版本的<strong>安装说明</strong>（要覆盖 Windows）；</li>
+<li>程序与目录结构说明，可另用 <code class="inl">programTOC</code> 文档。</li>
+</ol>
+<p>闭源包两条路：<code class="inl">pkglite::pack()</code> 打成纯文本束（Pilot 1），或压缩 <code class="inl">.zip</code>（Pilot 3 起，v9.3 后更顺）。下面是可直接抄进 ADRG 的中文骨架：</p>
+<pre class="code" style="white-space:pre"><code>【第 7 节 · 程序递交】
+本次递交的全部分析数据集与主要/次要疗效结果程序均以 R 编写，开发平台为 Linux，
+R 版本 4.4.3；源码以单字节 ASCII 文本（.txt）提供。所用包、版本与来源见附表
+package_versions.tsv；非 CRAN 来源与内部包单独列示。闭源包 c7pkg 以
+r0pkg.txt（pkglite 文本束）提供，亦可按 eCTD 文件格式规范 v9.3 以 .zip 提供。
+
+【第 9.1 节 · 附录 1：重建 R 分析环境】
+1) 安装与第 7 节一致的 R 版本，并安装与之匹配的 Rtools；
+2) 运行 00_install_packages.R，从 CRAN / 申办方内部仓库装回附表中的精确版本；
+3) 请勿直接复制申办方在 Linux 上生成的 renv.lock（跨操作系统不通用）；
+   请在本机执行 renv::init(bare = TRUE) 与 renv::snapshot() 生成 LOCAL 锁文件；
+4) 按 programs/ 下顺序运行各 .txt 程序，输出与 datasets/adsl.xpt 比对；
+5) 将 sessionInfo() 与 logs/ 下的执行日志一并归档，作为复现证据。
+【版本差异】预先声明与 SAS 结果允许的数值容差及舍入规则（见 9.6）。</code></pre>
+<p>C7 脚本会真的生成一份英文 ASCII 版 ADRG 骨架（教学用，非递交就绪文档）：</p>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，节选自 cases/out/c7_bundle/.../adrg.txt）
+ANALYSIS DATA REVIEWER'S GUIDE (ADRG) - C7 DEMO / TEACHING SKELETON
+
+7. SUBMISSION OF PROGRAMS
+   All programs for analysis datasets and displays were created on a
+   Windows platform using R 4.5.0.
+   Source programs are submitted as single-byte ASCII text (.txt).
+   Package versions and sources are listed in package_versions.tsv.
+   Closed-source package c7pkg is supplied as r0pkg.txt (pkglite)
+   and may alternatively be supplied as a .zip (eCTD file formats v9.3).
+
+9.1 APPENDIX 1 - RECREATING THE R ENVIRONMENT
+   1. Install R 4.5.0 (or the version agreed with the reviewer in advance).
+   2. Install Rtools matching the R version.
+   3. Run 00_install_packages.R ... Do NOT copy the sponsor's lockfile:
+      it was produced on a different OS and is not portable.
+   4. Run renv::init(bare = TRUE); renv::snapshot() to create a LOCAL lockfile.</pre>
+<div class="pitfall"><strong>SAS 误区：</strong>以为 ADRG 是"程序清单 + 一句 SAS 版本"。R 的 ADRG 还承担<strong>环境重建说明书</strong>的角色：包版本、来源、OS 差异、装包顺序、Rtools 版本、如何判断重跑成功，都要写到审评员照着做就能跑通的程度。</div>
+
+<h2 id="s9-5">9.5 包风险与验证：R Validation Hub 体系</h2>
+<p>第 5 章 5.8 讲了 <code class="inl">valtools</code> 与 <code class="inl">riskmetric / risk.assessr</code>，但没交代这套东西的出处。<a href="https://www.pharmar.org/">R Validation Hub（pharmaR）</a> 是跨公司协作，其白皮书 <em>A Risk-based Approach for Assessing R Package Accuracy within a Validated Infrastructure</em> 给出的核心主张是：<strong>不做"语言认证"，按风险分级评估每个包是否 fit for intended use</strong>。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r">library(riskmetric)
+# 一次标准评估：引用 -> 评估 -> 打分 -> 汇总
+ref &lt;- pkg_ref("dplyr", source = "pkg_cran_remote")
+a   &lt;- pkg_assess(ref)
+s   &lt;- pkg_score(a)
+print(head(as.data.frame(s), 8))
+# 离线安装源可改用 pkg_ref("dplyr")（class: pkg_install）</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0 / riskmetric，联网评估，节选）
+class: pkg_cran_remote, pkg_remote, pkg_ref, environment
+  covr_coverage has_news remote_checks news_current r_cmd_check
+1            NA        1          0.75            1          NA
+  exported_namespace has_vignettes export_help has_website has_maintainer
+1                 NA             1          NA           1              1
+  bugs_status size_codebase has_source_control has_bug_reports_url
+1   0.5666667            NA                  1                   1
+  downloads_1yr reverse_dependencies has_examples dependencies license
+1     0.9930892                   NA           NA           NA      NA</pre>
+<div class="note">这排 <code class="inl">NA</code> 就是本章最该记住的细节：<strong>封闭验证环境里，覆盖率、远程 check、下载量、reverse deps 这类需要联网或额外工具的指标无法求值，应如实记为 NA</strong>，而不是补 0 或凑分。评估族覆盖维护（maintainer/news）、文档（vignette/help）、测试（coverage/R CMD check）、社区使用（downloads/reverse deps）与规模依赖（codebase/dependencies）；但 <strong>accuracy（代码算得对不对）不在打分范围内</strong>，须由组织自行判断。</div>
+<table>
+<tr><th>工具</th><th>角色</th><th>2026 状态</th></tr>
+<tr><td><code class="inl">{riskmetric}</code></td><td>量化包质量指标（0–1 分），可挑指标、可扩展</td><td>pharmaverse 成员包</td></tr>
+<tr><td><code class="inl">{riskassessment}</code></td><td>Shiny 前端：审阅权限、组织级规则、决策分流、汇总报告</td><td>pharmaverse 成员包</td></tr>
+<tr><td><code class="inl">{riskscore}</code></td><td>CRAN/Bioconductor 全量包的风险分数数据快照</td><td>实验性 GitHub 数据包</td></tr>
+<tr><td><code class="inl">{risk.assessr}</code></td><td>Sanofi/Cytel 团队：<code class="inl">risk_assess_pkg()</code> 一把跑 R CMD check、覆盖率、追溯矩阵、依赖树；阈值存 <code class="inl">risk-definition.json</code> 可版本化</td><td>CRAN；pharmaverse blog 2026-06 专题</td></tr>
+<tr><td><code class="inl">{oysteR}</code></td><td>依赖 CVE 漏洞扫描</td><td>ET-292 推荐</td></tr>
+<tr><td><code class="inl">thevalidatoR</code></td><td>GitHub Action，产出标准化包验证报告 PDF</td><td>pharmaverse CI/CD 推荐</td></tr>
+</table>
+<div class="note"><strong>2026 新动态：</strong>R Validation Hub 于 <strong>2026-10-14 发布 <a href="https://pharmar.org/posts/news/early-adopter-guide/">Early Adopter Guide</a></strong>，招募组织试点其新一套 R 包验证工具，并在推进 <em>regulatory-ready R package repository</em>（可审计的 curated 包库）；<strong>2026-04-30 的 <a href="https://pharmar.org/posts/case-studies/scharp-case-study/">SCHARP 案例</a></strong> 展示了资源有限的非营利统计中心如何按「研究特定用途 + 风险偏好」做分级评估，仅对高关注试验强制全流程。另外，第 5 章引用的 PharmaSUG 2026 ET-140 实际标题为 <em>Unleash the R-volution: A Blueprint for Building Package Validation Capabilities in our own organization</em>（Kevin Lee, ClinVia），建议核对论文编号与标题。</div>
+<div class="pitfall"><strong>边界：</strong><code class="inl">riskmetric</code> 给的是<strong>证据，不是判决</strong>——验收阈值与最终放行必须由人签。封闭验证环境里，下载量、reverse deps、远程 check 等联网指标会返回 NA，如实记录即可，不要凑分。另注：<code class="inl">valtools</code> 对 R 4.5.0 当前无 CRAN 版本，需从 <a href="https://phuse-org.github.io/valtools/">PHUSE/pharmaverse 的 GitHub</a> 安装。</div>
+
+<h2 id="s9-6">9.6 容器 / WebAssembly / 跨平台边界</h2>
+<p>「打个 Docker 镜像就能复现」是最诱人也最容易在递交场景翻车的想法。Pilot 4 的 <a href="https://r-consortium.org/posts/beyond-feasibility-learning-from-fdas-response-to-webassembly-and-container-based-submissions/">FDA 回函（2026-05）</a> 给了很实际的答案：</p>
+<table>
+<tr><th>方案</th><th>FDA 回函 / 行业反馈</th><th>对笔记前八章的影响</th></tr>
+<tr><td>WebAssembly / webR</td><td>浏览器即用，审评员<strong>更偏好</strong>；但仍需 <code class="inl">renv</code> 还原构建依赖，还要起一个 web server 进程</td><td>renv 没被替代，反而仍是地基</td></tr>
+<tr><td>Docker / Podman 容器</td><td>整体打包 OS + R + 系统库，可移植性最好；但 Docker Desktop 需 WSL、FDA 笔记本安装受限（许可）、构建性能不稳，<strong>尚未消除手工配置</strong></td><td>容器是 L4 的候选，不是 L2/L7 的替代品</td></tr>
+<tr><td>纯 <code class="inl">renv.lock</code> + ADRG</td><td>已由 Pilot 1/3/5 与 J&amp;J 实际走通</td><td>仍是 2026 年最可依赖的默认路径</td></tr>
+</table>
+<p><a href="https://rinpharma.com/docs/summit/posts/2026-env-packages.html">R/Pharma 2026「Reproducible Environments」圆桌</a> 把问题概括成一份要能扛过 OS 更换的 <strong>recipe</strong>：申办方多在 Linux（常容器化），审评方多在 Windows；组织既需要<strong>锁定环境</strong>（拿镜像即可重跑）也需要<strong>开放环境</strong>（日常开发）；与其每个项目从 base R 叠 <code class="inl">renv</code>/<code class="inl">rv</code>/<code class="inl">uv</code>，不如约定一个<strong>跨项目共同核心包基线</strong>，只叠加项目特有部分。同场 <a href="https://rinpharma.com/docs/summit/posts/2026-eu-open-source-submissions.html">EU Summit 圆桌（2026-10-05）</a> 对「开源递交的顾虑解决了吗」给出的短答案是 <strong>Not Fully</strong>：审评员不熟 R、缺技术支持、包栈随时间演进、复现失败时没有支持模型，都仍是开放问题；讨论中的建议包括更清晰的 ADRG 模板、视频演示、由统计师作第一联系人、预先声明可接受差异，以及业界共建审评方友好的可安装环境。</p>
+<div class="note"><strong>数值可复现性是另一条独立的线。</strong>即使环境完全一致，BLAS、编译器、舍入规则也会让 R 与 SAS 结果有微小差异：PHUSE <strong>CAMIS</strong> 项目专门比对 R / SAS / East 在同一方法下的结果差异；Atorus 2026 为对齐 SAS 舍入专门写了函数并全表统一应用。经验做法是<strong>在 ADRG 中预先声明容差与舍入规则</strong>，并把「双编程 + <code class="inl">diffdf</code> 比对」的边界从"数据相同"扩展到"数值在容差内一致"。</div>
+
+<h2 id="s9-7">9.7 开源治理与 DevSecOps</h2>
+<p>PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-292.pdf">ET-292</a> 把第 5 章的 CI 章节再往外推一层：当 R 从散脚本长成跨研究复用的包与流水线，风险不再只是"代码写错"，还包括凭据泄露、机器间结果漂移、依赖变更引入漏洞、非交互环境跑挂、日志/产物泄漏敏感数据。它给出的三层架构可直接贴到第 5 章 5.7 的 GitHub Actions YAML 旁边：</p>
+<table>
+<tr><th>层</th><th>实践</th><th>工具</th></tr>
+<tr><td>开发</td><td>版本控制、质量门禁、标准化运行配置、可复现依赖</td><td>Git SHA、<code class="inl">renv</code> lockfile、Dockerfile、CI/CD gates</td></tr>
+<tr><td>安全</td><td>凭据与代码分离、最小权限、依赖健康、LLM 治理</td><td><code class="inl">oysteR</code> CVE、<code class="inl">riskmetric</code> 分数、密钥管理</td></tr>
+<tr><td>运营</td><td>执行审计、批处理加固、产物与代码/配置/执行上下文绑定</td><td><code class="inl">logrx</code> sidecar、Git SHA + digest、证据归档</td></tr>
+</table>
+<p>该文同时点名两个尚待解决的问题：<strong>精确数值复现</strong>（硬件、编译器、BLAS 差异）与<strong>多语言管线的环境锁定</strong>（把 <code class="inl">renv</code>/<code class="inl">oysteR</code> 思路延伸到 Python 的 <code class="inl">poetry.lock</code> / <code class="inl">pip-audit</code>）。社区层面的建议是共建<strong>共享容器基础镜像、renv lockfile 模板、跨组织预验证包清单</strong>，让小团队不必从零搭基础设施。</p>
+
+<h2 id="s9-8">9.8 递交级自检清单（可直接贴进项目 README）</h2>
+<ol>
+<li><strong>代码版本</strong>：Git commit SHA 已记录，程序以 ASCII <code class="inl">.txt</code> 提供（SDTCG §4.1.2.10）。</li>
+<li><strong>包清单</strong>：ADRG 附表列出每个包的版本与来源，非 CRAN / 内部包单独标注。</li>
+<li><strong>环境配方</strong>：ADRG §9.1 给出安装脚本、R 版本、Rtools 匹配说明与「在本机重建 lockfile」的指示。</li>
+<li><strong>运行时留痕</strong>：<code class="inl">sessionInfo()</code> 与包版本表已归档。</li>
+<li><strong>输入只读</strong>：输入快照 md5 已记录，中间产物（rds 等）不进入分析输入链。</li>
+<li><strong>数据格式</strong>：XPT v5 已生成并过 Pinnacle 21；若用 Dataset-JSON，<strong>注明 v1.1 校验工具的当前支持状态</strong>并保留 XPT 双轨。</li>
+<li><strong>闭源包</strong>：<code class="inl">pkglite</code> 文本束或 <code class="inl">.zip</code> 其一已提供，文件名符合 eCTD 约定。</li>
+<li><strong>执行日志</strong>：<code class="inl">logrx</code> / <code class="inl">logger</code> 落盘，stdout+stderr 全收，含时间与运行人。</li>
+<li><strong>验证证据</strong>：包风险评估（<code class="inl">riskmetric</code> / <code class="inl">risk.assessr</code>）、<code class="inl">testthat</code> 回归、CI 日志、<code class="inl">valtools</code> 追溯矩阵齐备。</li>
+<li><strong>QC 与容差</strong>：双编程 <code class="inl">diffdf</code> 结果归档；ADRG 预声明与 SAS/其他语言的舍入规则与可接受数值差异；产物清单（file + md5 + bytes）已生成。</li>
+</ol>
+<div class="note">这 10 条在 <a href="cases/c7-submission-bundle.html">C7</a> 里被真的跑了一遍：脚本产出 <code class="inl">manifest.tsv</code>、ADRG 骨架、XPT、Dataset-JSON、pkglite 文本束与 logrx 日志，并做 <code class="inl">diffdf</code> 自检。</div>
+
+<h2 id="s9-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions Working Group</a> — 七个 Pilot、会议纪要、FDA 回函与全部递交包仓库，一手来源 <span class="tag">参考</span></li>
+<li><a href="https://r-consortium.org/posts/submissions-wg-2026">2026 Plans and 2025 Success（2026-02-13）</a> — Pilot 4/5/6/7 状态与 eCTD 里程碑 <span class="tag">参考</span></li>
+<li><a href="https://r-consortium.org/posts/beyond-feasibility-learning-from-fdas-response-to-webassembly-and-container-based-submissions/">Beyond Feasibility（Pilot 4 FDA 回函，2026-05）</a> — webR 与容器在审评端的真实边界 <span class="tag">进阶</span></li>
+<li><a href="https://pharmaverse.github.io/examples/esub/esub.html">pharmaverse examples · eSubmission</a> — ADRG 五项、xportr/metacore/pkglite/datasetjson 实操 <span class="tag">入门</span></li>
+<li><a href="https://www.pharmar.org/">R Validation Hub / pharmaR</a> — 白皮书、riskmetric、riskassessment、Early Adopter Guide <span class="tag">进阶</span></li>
+<li><a href="https://phuse-org.github.io/OSDocuMeta/">PHUSE Open-Source Metadata Documentation</a> — ADRG 版本元数据项目、问题陈述与 adrgOS 进展 <span class="tag">参考</span></li>
+<li><a href="https://rinpharma.com/docs/summit/posts/2026-env-packages.html">R/Pharma 2026 · Reproducible Environments</a> 与 <a href="https://rinpharma.com/docs/summit/posts/2026-eu-open-source-submissions.html">EU Summit · Are Concerns Solved?</a> — recipe / OS mismatch / Not Fully <span class="tag">进阶</span></li>
+<li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-292.pdf">PharmaSUG 2026 ET-292 DevSecOps</a> — 三层架构、oysteR、LLM 治理、数值复现开放问题 <span class="tag">进阶</span></li>
+<li><a href="https://www.fda.gov/drugs/electronic-regulatory-submission-and-review/ectd-submission-standards-ectd-v40-and-regional-m1">FDA eCTD Submission Standards（版本历史）</a> — File Format Types v9.3 / TCG v1.5 的官方版本号 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="s9-ex">本章练习</h2>
+<ol>
+<li>（易）在仓库根目录运行 <code class="inl">Rscript cases/c7_submission_bundle.R</code>，打开 <code class="inl">cases/out/c7_bundle/manifest.tsv</code>，逐项对照 9.8 的 10 条清单，指出哪些已覆盖、哪些仍需人工补。</li>
+<li>（中）把 C7 生成的 <code class="inl">adrg.txt</code> 翻译成中文，补上「包版本与来源附表」和「与 SAS 结果的舍入容差声明」两节，并说明为什么锁文件要在审评端重建。</li>
+<li>（难）用 <code class="inl">riskmetric</code> 对本项目 <code class="inl">renv.lock</code> 里的 3 个包做一次评估，写出哪些指标在断网环境返回 NA、你的验收阈值定多少、以及为什么 <code class="inl">accuracy</code> 不在打分范围内。</li>
+</ol>
+<p class="lede">本章把第 0、4、5、8 章散落的线索收成一条：可复现不是"我有 renv.lock"，而是<strong>审评员照着 ADRG 能在另一台机器上把结果跑出来</strong>。下一站是 <a href="cases/c7-submission-bundle.html">C7</a>——把这条链亲手跑一遍。</p>
+</article></main>
+<aside class="toc">
+<a href="#s9-1">9.1 监管口径</a>
+<a href="#s9-2">9.2 七个 Pilot</a>
+<a href="#s9-3">9.3 七层证据链</a>
+<a href="#s9-4">9.4 ADRG 模板</a>
+<a href="#s9-5">9.5 包风险验证</a>
+<a href="#s9-6">9.6 容器与跨平台</a>
+<a href="#s9-7">9.7 DevSecOps</a>
+<a href="#s9-8">9.8 递交级清单</a>
+<a href="#s9-res">章末资源</a>
+<a href="#s9-ex">本章练习</a>
+</aside>
+</div>
+<script src="assets/site.js"></script></body></html>

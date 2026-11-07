@@ -1,0 +1,237 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>案例 C7 最小可复现递交包 · R 临床数据分析教程</title>
+<link rel="stylesheet" href="../assets/site.css"><link rel="icon" href="../assets/logo.svg"></head>
+<body><div class="progress"></div>
+<header class="top"><a class="brand" href="../index.html"><img src="../assets/logo.svg" alt=""> <span>R 临床实战<em>From SAS to R, In Depth</em></span></a>
+<nav class="topnav"><a href="../index.html#toc">全书目录</a><a href="../ch9-submission.html">第 9 章 递交与复现</a>
+<button id="theme-toggle" aria-label="切换暗色">◐</button></nav></header>
+<div class="layout">
+<aside class="sidenav">
+<a href="../index.html">← 返回首页</a>
+<div class="grp">章</div>
+<a href="../ch0-environment.html">0 起步与环境</a>
+<a href="../ch1-r-basics.html">1 R 语言基础</a>
+<a href="../ch2-cdisc.html">2 数据管理与 CDISC</a>
+<a href="../ch3-stats.html">3 统计分析</a>
+<a href="../ch4-tfl.html">4 临床报告 TLFs</a>
+<a href="../ch5-advanced.html">5 进阶 R 与工程化</a>
+<a href="../ch6-pkgdev.html">6 R 包开发</a>
+<a href="../ch7-shiny.html">7 Shiny 与交互</a>
+<a href="../ch8-community.html">8 社区与职业</a>
+<a href="../ch9-submission.html">9 监管递交与可复现性</a>
+<div class="grp">案例</div>
+<a href="c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
+<a href="c2-survival.html">C2 生存分析</a>
+<a href="c3-faers-signal.html">C3 FAERS 信号</a>
+<a href="c4-nhanes.html">C4 NHANES 加权</a>
+<a href="c5-trials-landscape.html">C5 试验景观</a>
+<a href="c6-teal-explorer.html">C6 teal 探索器</a>
+<a class="on" href="c7-submission-bundle.html">C7 最小可复现递交包</a>
+</aside>
+<main><article class="chap">
+<div class="crumb"><a href="../index.html">全书目录</a> / <a href="../ch9-submission.html">第 9 章</a> / 实战案例</div>
+<div class="chapnum">C7</div>
+<h1>最小可复现递交包</h1>
+<p class="lede">把第 0 章的 renv、第 4 章的追溯清单、第 5 章的验证证据和第 9 章的 ADRG 拼成一个真能跑通的目录：一条命令产出 XPT、Dataset-JSON、ASCII 程序、闭源包文本束、执行日志、ADRG 骨架与 md5 清单。</p>
+
+<h2 id="sc7-0">背景与学习目标</h2>
+<p>C1 关心「结果对不对」，C7 关心「<strong>别人能不能把同样的结果再跑一遍</strong>」。脚本为 <code class="inl">cases/c7_submission_bundle.R</code>，在仓库根目录执行 <code class="inl">Rscript cases/c7_submission_bundle.R</code>；产物写到 <code class="inl">cases/out/c7_bundle/</code>（已加入 <code class="inl">.gitignore</code>，不进版本库）。学完你应当能够：</p>
+<ul>
+<li><strong>目标 1</strong>：说清七层证据链分别锁什么、每层的产物落在哪个目录。</li>
+<li><strong>目标 2</strong>：亲手生成 XPT v5 与 Dataset-JSON v1.1，理解两者在 2026 年递交中的双轨关系。</li>
+<li><strong>目标 3</strong>：写出一份能照着重建环境的 ADRG 骨架，并用 <code class="inl">manifest.tsv</code> 做产物自检。</li>
+</ul>
+<div class="note"><strong>数据源：</strong>复用 C1 的共享推导 <code class="inl">cases/common.R</code>，输入为 <code class="inl">pharmaversesdtm::dm</code> 合成 SDTM（306 行），不联网、无外部数据下载。<strong>依赖：</strong>必需 <code class="inl">admiral / pharmaversesdtm / dplyr / diffdf / renv</code>；可选 <code class="inl">xportr / datasetjson / pkglite / logrx</code>（缺失时脚本自动降级并如实打印）。本站实跑捕获使用 R 4.5.0，可选包通过 <code class="inl">C7_R_LIBS</code> 指向的私有库加载，未改动全局 R 库。</div>
+
+<h2 id="sc7-1">步骤 1：分析数据集与双编程自检</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r">root &lt;- if (grepl("cases$", getwd())) ".." else "."
+source(file.path(root, "cases", "common.R"))
+adsl &lt;- suppressWarnings(derive_adsl())          # admiral + pharmaversesdtm
+qc   &lt;- diffdf(adsl, suppressWarnings(derive_adsl()), keys = "USUBJID")
+cat("ADSL", nrow(adsl), "x", ncol(adsl), "| ITTFL=Y", sum(adsl$ITTFL == "Y"), "\n")
+cat("[QC] diffdf issues:", diffdf_has_issues(qc), "\n")</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+-- Step 1 analysis dataset --
+ADSL 306 x 14 | ITTFL=Y 254
+[QC] diffdf issues: FALSE</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li>直接复用 C1 的 <code class="inl">derive_adsl()</code>，把注意力留给「包装」而不是再写一遍推导；路径自适应保证从根目录或 cases/ 下都能跑。</li>
+<li>两次独立调用做 <code class="inl">diffdf</code> 自检，等价于 SAS 的 PROC COMPARE——<strong>可复现的第一步是证明同一份代码能重复产出同一份数据</strong>。</li>
+</ol></div>
+
+<h2 id="sc7-2">步骤 2：七层证据链（L1–L7）</h2>
+<p>这一节是 C7 的核心。<strong>注意 L2：脚本在 <code class="inl">reviewer_env/</code> 里新建裸项目并 snapshot，而不是把申办方的 lockfile 复制过来</strong>——这是第 9 章 9.3 与 J&amp;J ADRG 附录的关键差别。</p>
+<pre class="code" style="white-space:pre"><code class="lang-r"># L1 Git SHA
+sha &lt;- system2("git", c("-C", shQuote(normalizePath(root)), "rev-parse", "--short", "HEAD"),
+               stdout = TRUE, stderr = FALSE)[1]
+
+# L2 在审评端重建锁文件
+renv::init(project = reviewer, bare = TRUE, restart = FALSE)
+renv::snapshot(project = reviewer, prompt = FALSE)
+setwd(old_wd); .libPaths(old_lib)   # renv::init 会切换 wd 与库路径，必须恢复
+
+# L3/L4 会话与包版本
+writeLines(capture.output(sessionInfo()), file.path(logs, "session.txt"))
+vers &lt;- vapply(used, function(p) as.character(packageVersion(p)), character(1))
+
+# L5 输入指纹  L6 执行日志  L7 ADRG
+write.csv(pharmaversesdtm::dm, file.path(inputs, "dm_snapshot.csv"), row.names = FALSE)
+md5 &lt;- substr(unname(tools::md5sum(snapshot)), 1, 12)
+logrx::axecute(file.path(programs, "run.R"), log_name = "run.log", log_path = logs)
+writeLines(adrg, file.path(docu, "adrg.txt"))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+-- Step 2 environment evidence (L1-L7) --
+L1 git SHA          : cd73fbb
+L2 renv.lock        : rebuilt in reviewer_env/
+   contains R/renv  : TRUE / TRUE
+L3 sessionInfo      : logs/session.txt
+L4 package versions : 9 of 9 available -> logs/package_versions.tsv
+L5 input md5        : 9c19ef853ff4 (inputs/dm_snapshot.csv)
+L6 execution log    : logs/run.log (logrx)
+</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">renv::init()</code> 会切换工作目录并把 <code class="inl">.libPaths()</code> 指到项目私库——这是实战中最容易踩的坑：后续相对路径全部错位、可选包突然"找不到"。脚本里显式 <code class="inl">setwd(old_wd)</code> 与 <code class="inl">.libPaths(old_lib)</code> 恢复。</li>
+<li><code class="inl">logrx::axecute()</code> 生成的日志自带 logrx 版本、文件 hash、session info 与所用函数清单，比手写 <code class="inl">Rscript ... &gt;&gt; log 2&gt;&amp;1</code> 更接近审评端需要的执行证据。</li>
+<li>输入指纹取的是<strong>落盘的只读快照</strong>而不是内存对象，这样审评员能拿同一个文件校验 md5。</li>
+</ol></div>
+<div class="pitfall"><strong>SAS 误区：</strong>把「环境锁」理解成「把一个文件随包发过去」。真正要交付的是<strong>配方 + 可核验的产物</strong>：安装脚本、R/Rtools 版本、在本机重建锁文件的指示，以及能证明重建成功的 sessionInfo 与日志。</div>
+
+<h2 id="sc7-3">步骤 3：XPT v5 与 Dataset-JSON v1.1 双轨</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r"># XPT v5：递交级做法用 xportr + metacore 从 spec 取 label/format/length
+xportr::xportr_write(adsl, path = file.path(datasets, "adsl.xpt"), domain = "ADSL")
+
+# Dataset-JSON v1.1 必须显式提供列级元数据（itemOID/name/label/dataType）
+mk_cols &lt;- function(df, domain = "ADSL") {
+  dt &lt;- vapply(df, function(x) {
+    if (inherits(x, "Date")) "date" else if (is.integer(x)) "integer" else
+    if (is.numeric(x)) "float" else if (is.logical(x)) "boolean" else "string"
+  }, character(1))
+  data.frame(itemOID = paste0("IT.", domain, ".", names(df)), name = names(df),
+             label = names(df), dataType = unname(dt), length = NA_integer_,
+             keySequence = ifelse(names(df) == "USUBJID", 1L, NA_integer_))
+}
+# date 列必须转成 ISO-8601 字符，不能传 Date 对象（v1.1 校验要求）
+adsl_json &lt;- as.data.frame(lapply(adsl, function(x)
+  if (inherits(x, "Date")) format(x, "%Y-%m-%d") else x))
+dj &lt;- datasetjson::dataset_json(adsl_json, name = "ADSL", columns = mk_cols(adsl),
+                                 version = "1.1.0")
+datasetjson::write_dataset_json(dj, file = file.path(datasets, "adsl.json"), pretty = TRUE)</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+-- Step 3 data deliverables --
+XPT v5              : adsl.xpt 45280 bytes
+Dataset-JSON 1.1.0  : adsl.json 103264 bytes
+Note                : keep XPT too - v1.1 not yet in Pinnacle 21 (Pilot 5)</pre>
+<div class="note"><strong>为什么要双轨：</strong>R Consortium Pilot 5 用 <code class="inl">datasetjson</code> 替换全部 XPT 后，发现 <strong>Dataset-JSON v1.1 当时尚未被 Pinnacle 21 支持</strong>，于是与 FDA 沟通后改用 XPT 完成验证，并把这一点写进 ADRG。本案例照此保留两份数据。另外，第一次尝试写 Dataset-JSON 时脚本报了错——<code class="inl">dataType = "date"</code> 要求输入列为 ISO-8601 字符而非 <code class="inl">Date</code> 对象——这个报错本身就是「新格式需要列级元数据」的最好教材。</div>
+
+<h2 id="sc7-4">步骤 4：ASCII 程序与闭源包打包</h2>
+<pre class="code" style="white-space:pre"><code class="lang-r"># SDTCG v5.7 §4.1.2.10：源码以单字节 ASCII 文本递交
+writeLines(c("# Program: adam_adsl.txt - derive ADSL (single-byte ASCII)",
+             "source('cases/common.R')", "adsl &lt;- derive_adsl()",
+             "stopifnot(nrow(adsl) &gt; 0, !anyDuplicated(adsl$USUBJID))"),
+           file.path(programs, "adam_adsl.txt"))
+pkglite::verify_ascii(file.path(programs, "adam_adsl.txt"), quiet = TRUE)
+
+# 闭源包：pkglite 文本束（Pilot 1）或 .zip（Pilot 3 / eCTD v9.3）
+pkglite::collate(pkg = pkgdir, pkglite::file_ectd(), pkglite::file_auto("R")) %&gt;%
+  pkglite::pack(output = file.path(programs, "r0pkg.txt"))</code></pre>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0）
+-- Step 4 program bundle --
+ASCII program       : adam_adsl.txt (verify_ascii = TRUE )
+pkglite text bundle : r0pkg.txt 564 bytes
+.zip package        : skipped (no external zip tool); .txt bundle used</pre>
+<div class="walk"><strong>逐行解读：</strong>
+<ol>
+<li><code class="inl">verify_ascii()</code> 是 <code class="inl">pkglite</code> 自带的校验函数，直接对应 SDTCG 的 ASCII 要求——比肉眼检查靠谱，也方便进 CI。</li>
+<li>本机没有外部 <code class="inl">zip</code> 可执行程序，所以 <code class="inl">.zip</code> 分支被如实跳过，用文本束兜底。<strong>脚本不隐瞒降级</strong>：这一点和「断网环境下 riskmetric 指标记 NA」是同一种诚实，正是可审计流水线该有的行为。</li>
+</ol></div>
+
+<h2 id="sc7-5">步骤 5：ADRG 骨架与产物清单</h2>
+<p>脚本生成 <code class="inl">m5/datasets/c7demo/analysis/adam/documentation/adrg.txt</code>，含第 7 节「程序递交」与第 9.1 节「重建 R 环境」；中文版模板见 <a href="../ch9-submission.html">第 9 章 9.4</a>。最后一步给所有产物算 md5、记字节数：</p>
+<pre class="out" style="white-space:pre"># 实跑捕获（R 4.5.0，节选自 cases/out/c7_bundle/manifest.tsv）
+file                 md5            bytes
+dm_snapshot.csv      9c19ef853ff4    81313
+session.txt          920e410aecb0    1304
+run.log              8044e0686fc9    8447
+adsl.xpt             9a3de208f358    45280
+adsl.json            473f40385f8c   103264
+adrg.txt             cdabe1c53e0c    1131
+adam_adsl.txt        155d78632fda     238
+r0pkg.txt            92582240e62e     564
+renv.lock            996bdad3cbf5    2455</pre>
+
+<h2 id="sc7-6">完整实跑输出</h2>
+<p>一次 <code class="inl">Rscript cases/c7_submission_bundle.R</code> 的完整控制台输出（原文存于 <code class="inl">docs/run-outputs/c7_submission_bundle.txt</code>）：</p>
+<pre class="out" style="white-space:pre">== C7 Minimum Reproducible Submission Bundle ==
+[0] R 4.5.0 | x86_64-w64-mingw32 | bundle cases/out/c7_bundle
+
+-- Step 1 analysis dataset --
+ADSL 306 x 14 | ITTFL=Y 254
+[QC] diffdf issues: FALSE
+
+-- Step 2 environment evidence (L1-L7) --
+L1 git SHA          : cd73fbb
+L2 renv.lock        : rebuilt in reviewer_env/
+   contains R/renv  : TRUE / TRUE
+L3 sessionInfo      : logs/session.txt
+L4 package versions : 9 of 9 available -> logs/package_versions.tsv
+L5 input md5        : 9c19ef853ff4 (inputs/dm_snapshot.csv)
+L6 execution log    : logs/run.log (logrx)
+
+-- Step 3 data deliverables --
+XPT v5              : adsl.xpt 45280 bytes
+Dataset-JSON 1.1.0  : adsl.json 103264 bytes
+Note                : keep XPT too - v1.1 not yet in Pinnacle 21 (Pilot 5)
+
+-- Step 4 program bundle --
+ASCII program       : adam_adsl.txt (verify_ascii = TRUE )
+pkglite text bundle : r0pkg.txt 564 bytes
+.zip package        : skipped (no external zip tool); .txt bundle used
+
+-- Step 5 ADRG skeleton --
+ADRG sections       : 7 Submission of Programs / 9.1 Environment Recreation
+
+-- Step 6 manifest / QC --
+artifacts           : 15 | all non-empty: TRUE
+manifest            : manifest.tsv (file + md5 + bytes)
+== C7 complete ==</pre>
+<div class="quiz" data-answer="B">
+<p class="quiz-q">测验：C7 为什么要「在 reviewer_env/ 里新建 lockfile」，而不是把申办方的 renv.lock 复制过去？</p>
+<button class="quiz-opt" data-opt="A">因为 renv.lock 文件太大，eCTD 不允许</button>
+<button class="quiz-opt" data-opt="B">因为锁文件绑定了生成它的 OS 与库解析结果，跨 Linux/Windows 不通用；应交付安装配方让审评端本地重建</button>
+<button class="quiz-opt" data-opt="C">因为 FDA 禁止递交任何 lockfile</button>
+<div class="quiz-exp">选 B。J&amp;J 的 ADRG 附录与 R/Pharma 2026 圆桌都指向同一做法；Pilot 5 还额外说明 Rtools 版本须与 R 版本匹配。FDA 并不禁止 lockfile，问题在于可移植性。</div>
+</div>
+
+<h2 id="sc7-res">章末资源</h2>
+<section class="res">
+<ul>
+<li><a href="../ch9-submission.html">第 9 章 监管递交与可复现性</a> — 本案例的概念底稿，含 ADRG 中文模板 <span class="tag">入门</span></li>
+<li><a href="https://pharmaverse.github.io/examples/esub/esub.html">pharmaverse examples · eSubmission</a> — 官方递交包经验与 ADRG 五项 <span class="tag">入门</span></li>
+<li><a href="https://github.com/RConsortium/submissions-pilot3-adam-to-fda/blob/main/m5/datasets/rconsortiumpilot3/analysis/adam/datasets/adrg.pdf">R Consortium Pilot 3 ADRG（PDF）</a> — 可直接对照的真实递交文档 <span class="tag">进阶</span></li>
+<li><a href="https://merck.github.io/pkglite/">pkglite</a> · <a href="https://atorus-research.github.io/xportr/">xportr</a> · <a href="https://atorus-research.github.io/datasetjson/">datasetjson</a> · <a href="https://github.com/pharmaverse/logrx">logrx</a> — 本案例四个可选包的官方文档 <span class="tag">参考</span></li>
+</ul>
+</section>
+<h2 id="sc7-ex">本章练习</h2>
+<ol>
+<li>（易）跑通脚本，找到 <code class="inl">reviewer_env/renv.lock</code>，读出其中记录的 R 版本与 <code class="inl">renv</code> 版本。</li>
+<li>（中）把 <code class="inl">adam_adsl.txt</code> 改成一份带 <code class="inl">logger</code> 三级日志的版本，重跑后检查 <code class="inl">manifest.tsv</code> 里该文件的 md5 是否变化，并解释这个变化意味着什么。</li>
+<li>（难）给脚本补一个 <code class="inl">00_install_packages.R</code>：从 <code class="inl">package_versions.tsv</code> 读取精确版本、按来源安装，并把「审评员执行后应看到什么」写进 ADRG §9.1。</li>
+</ol>
+<p class="lede">C7 的产物不是一份"合规递交包"，而是一套可检查的证据链骨架。真要递交，请回到公司 SOP、当期 FDA/EMA 指南与 QA/RA 的审核意见。</p>
+</article></main>
+<aside class="toc">
+<a href="#sc7-0">背景与目标</a>
+<a href="#sc7-1">1 数据集与 QC</a>
+<a href="#sc7-2">2 七层证据链</a>
+<a href="#sc7-3">3 XPT 与 JSON</a>
+<a href="#sc7-4">4 程序打包</a>
+<a href="#sc7-5">5 ADRG 与清单</a>
+<a href="#sc7-6">完整实跑输出</a>
+<a href="#sc7-res">章末资源</a>
+<a href="#sc7-ex">本章练习</a>
+</aside>
+</div>
+<script src="../assets/site.js"></script></body></html>

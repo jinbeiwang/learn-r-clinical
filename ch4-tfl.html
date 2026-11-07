@@ -19,6 +19,7 @@
 <a href="ch6-pkgdev.html">6 R 包开发</a>
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a href="ch8-community.html">8 社区与职业</a>
+<a href="ch9-submission.html">9 监管递交与可复现性</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -26,6 +27,7 @@
 <a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
 <a href="cases/c5-trials-landscape.html">C5 试验景观</a>
 <a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+<a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a>
 </aside>
 <main><article class="chap">
 <div class="crumb"><a href="index.html">全书目录</a> / 第 4 章</div>
@@ -313,6 +315,7 @@ Output created: t14_1_1_xlo.html</pre>
 <li><strong>代码版本</strong>：Git commit hash 可查；产物文件名或页脚带上版本与生成时间。</li>
 <li><strong>QC 记录</strong>：双编程的 diff 结果（diffdf/waldo/testthat）归档，谁跑、何时跑、结论如何。</li>
 </ol></div>
+<div class="note"><strong>递交级补充（2026 更新，见 <a href="ch9-submission.html">第 9 章 9.8</a> 与 <a href="cases/c7-submission-bundle.html">C7</a>）：</strong>上面 7 项是「项目内可追溯」，一旦进入 eCTD 递交包还要再补——① <strong>ADRG</strong>：§7 写明 R 版本、OS、每个包的版本与来源，§9.1 给出审评端重建环境的步骤（<code class="inl">renv.lock</code> 不可跨 OS 搬运）；② <code class="inl">logrx</code> 或 <code class="inl">whirl</code> 生成带文件 hash、session info、所用函数清单的执行日志，替代手写重定向；③ 程序按 SDTCG §4.1.2.10 以<strong>单字节 ASCII 文本</strong>递交，闭源包用 <code class="inl">pkglite</code> 文本束或 <code class="inl">.zip</code>（eCTD 文件格式规范 v9.3 后不再必须转 <code class="inl">.txt</code>）；④ 产物落在 <code class="inl">m5/datasets/&lt;study&gt;/analysis/adam/</code> 结构下，附 Define-XML 与 Pinnacle 21 校验结果；⑤ 生成 <code class="inl">manifest.tsv</code>（file + md5 + bytes）并预声明与 SAS 结果的舍入/容差规则。</div>
 
 <h2 id="s4-res">章末资源</h2>
 <section class="res">

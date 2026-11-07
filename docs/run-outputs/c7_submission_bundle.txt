@@ -1,0 +1,33 @@
+== C7 Minimum Reproducible Submission Bundle ==
+[0] R 4.5.0 | x86_64-w64-mingw32 | bundle cases/out/c7_bundle
+
+-- Step 1 analysis dataset --
+ADSL 306 x 14 | ITTFL=Y 254 
+[QC] diffdf issues: FALSE 
+
+-- Step 2 environment evidence (L1-L7) --
+L1 git SHA          : cd73fbb 
+L2 renv.lock        : rebuilt in reviewer_env/ 
+   contains R/renv  : TRUE / TRUE 
+L3 sessionInfo      : logs/session.txt
+L4 package versions : 9 of 9 available -> logs/package_versions.tsv
+L5 input md5        : 9c19ef853ff4 (inputs/dm_snapshot.csv)
+L6 execution log    : logs/run.log (logrx)
+
+-- Step 3 data deliverables --
+XPT v5              : adsl.xpt 45280 bytes 
+Dataset-JSON 1.1.0  : adsl.json 103264 bytes 
+Note                : keep XPT too - v1.1 not yet in Pinnacle 21 (Pilot 5)
+
+-- Step 4 program bundle --
+ASCII program       : adam_adsl.txt (verify_ascii = TRUE )
+pkglite text bundle : r0pkg.txt 564 bytes 
+.zip package        : skipped (no external zip tool); .txt bundle used 
+
+-- Step 5 ADRG skeleton --
+ADRG sections       : 7 Submission of Programs / 9.1 Environment Recreation
+
+-- Step 6 manifest / QC --
+artifacts           : 15 | all non-empty: TRUE 
+manifest            : manifest.tsv (file + md5 + bytes)
+== C7 complete ==

@@ -19,6 +19,7 @@
 <a href="ch6-pkgdev.html">6 R 包开发</a>
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a href="ch8-community.html">8 社区与职业</a>
+<a href="ch9-submission.html">9 监管递交与可复现性</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -26,6 +27,7 @@
 <a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
 <a href="cases/c5-trials-landscape.html">C5 试验景观</a>
 <a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+<a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a>
 </aside>
 <main><article class="chap">
 <div class="crumb"><a href="index.html">全书目录</a> / 第 5 章</div>
@@ -287,7 +289,7 @@ jobs:
 <li><code class="inl">setup-renv@v2</code> 按 renv.lock 装回完全相同的包版本——CI 证据链里的"环境"环节。</li>
 <li><code class="inl">check-r-package@v2</code> = R CMD check + testthat 全量回归；任何 ERROR 或测试失败，整个 job 红灯，PR 不许合。</li>
 </ol></div>
-<div class="note">CI 全绿是"持续回归"证据，不能替代验证计划与风险评估——它做的是把验证里 OQ 级的回归部分日常化。YAML 文件本身要进版本库、可评审、可追溯，它也是验证文档的一部分。</div>
+<div class="note">CI 全绿是"持续回归"证据，不能替代验证计划与风险评估——它做的是把验证里 OQ 级的回归部分日常化。YAML 文件本身要进版本库、可评审、可追溯，它也是验证文档的一部分。<strong>2026 补充：</strong>可在 CI 里再加 <code class="inl">thevalidatoR</code>（GitHub Action，产出标准化包验证报告 PDF）与 <code class="inl">oysteR</code> CVE 扫描；容器化 CI 能保证构建环境一致，但 Pilot 4 的 FDA 回函显示容器在审评端仍未必装得上，所以<strong>CI 容器不能替代 ADRG 里的环境重建说明</strong>。三层 DevSecOps 架构见 <a href="ch9-submission.html">9.7</a>。</div>
 
 <h2 id="s5-8">5.8 GxP 验证：valtools 工作流与 CSV 映射</h2>
 <p>第 0 章说过：在 R 世界，验证的最小单元是"包 + 测试 + 锁环境"，而不是单个脚本。落到工具上，pharmaverse/PHUSE 社区开源的 <strong>valtools</strong>（<a href="https://phuse-org.github.io/valtools/">pharmaverse.github.io/valtools</a>）把 CSV 纪律搬进了 R 项目：用 <code class="inl">vt_create_skeleton()</code> 生成验证工程骨架（验证计划、需求、风险分析各就各位）；需求、代码、测试同库管理，形成<strong>需求→代码→测试的追溯矩阵</strong>；最后 <code class="inl">vt_create_report()</code> 一键产出带追溯关系的验证报告。你在 SAS 时代的 VP/IQ/OQ/PQ 文档树，几乎可以逐层映射过去：</p>
@@ -299,7 +301,8 @@ jobs:
 <tr><td>CI 流水线</td><td>自动化工具</td><td>每次 push 全量回归，日志归档为持续验证证据</td></tr>
 <tr><td>分析环境</td><td>系统配置</td><td>sessionInfo() + renv.lock 存档，进验证报告附录</td></tr>
 </table>
-<div class="note">PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">ET-140《R Package Validation》</a>（Kevin Lee）把 R 包验证整理成一条持续生命周期：需求收集 → 治理 → 风险评估 → 验证执行 → 安装到系统 → 文档化留档；工具面用 testthat 承担测试、riskmetric / risk.assessr 承担包风险打分。读完它你会发现：这套框架没有发明新纪律，只是把你熟悉的 CSV 流程翻译成了 R 的工程形态。</div>
+<div class="note">PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">ET-140《Unleash the R-volution: A Blueprint for Building Package Validation Capabilities in our own organization》</a>（Kevin Lee, ClinVia）把 R 包验证整理成一条持续生命周期：需求收集 → 治理 → 风险评估 → 验证执行 → 安装到系统 → 文档化留档；工具面用 testthat 承担测试、<code class="inl">riskmetric</code> / <code class="inl">risk.assessr</code> 承担包风险打分。读完它你会发现：这套框架没有发明新纪律，只是把你熟悉的 CSV 流程翻译成了 R 的工程形态。</div>
+<div class="note"><strong>2026 更新 · 这套框架的出处：</strong><a href="https://www.pharmar.org/">R Validation Hub（pharmaR）</a> 的白皮书 <em>A Risk-based Approach for Assessing R Package Accuracy within a Validated Infrastructure</em> 提出按风险分级评估包是否 fit for intended use，并维护 <code class="inl">{riskmetric}</code>（指标打分）、<code class="inl">{riskassessment}</code>（Shiny 审阅与签核）、<code class="inl">{riskscore}</code>（全量包分数快照）。<code class="inl">{risk.assessr}</code> 是 Sanofi/Cytel 团队 2026 年上 CRAN 的另一套实现（<code class="inl">risk_assess_pkg()</code> + 可版本化的 <code class="inl">risk-definition.json</code>），与 <code class="inl">riskassessment</code> 是<strong>两个不同的包</strong>，不要混写。Hub 于 <strong>2026-10-14 发布 Early Adopter Guide</strong> 招募组织试点新工具集，并推进 regulatory-ready R package repository；详见 <a href="ch9-submission.html">9.5</a>。另注：<code class="inl">valtools</code> 对 R 4.5.0 当前无 CRAN 版本，需从 GitHub 安装。</div>
 <div class="pitfall"><strong>SAS 误区：</strong>像验证 SAS 程序一样只验证"那一个脚本"。R 的分析结果依赖一整条包依赖链——同一个脚本在 dplyr 1.1.0 和 1.1.6 下行为可能有细微差别。验证对象必须是"包 + 版本 + 环境 + 测试"的整体，这正是 renv.lock、sessionInfo 和 valtools 追溯矩阵存在的意义。</div>
 
 <h2 id="s5-9">5.9 代码评审清单：10 条硬杠</h2>
@@ -323,7 +326,9 @@ jobs:
 <li><a href="https://adv-r.hadley.nz">Advanced R (2e)</a> — Hadley Wickham 的权威进阶教材；本章环境、闭包、S3、条件系统的完整展开 <span class="tag">进阶</span></li>
 <li><a href="https://testthat.r-lib.org">testthat 官网</a> — 单元测试入门文档，先读 get-started 再翻期望函数大全 <span class="tag">入门</span></li>
 <li><a href="https://phuse-org.github.io/valtools/">valtools</a> — R 包 GxP 验证框架：需求-代码-测试追溯矩阵与验证报告生成 <span class="tag">进阶</span></li>
-<li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">PharmaSUG 2026 ET-140 R Package Validation</a> — R 包验证全生命周期论文，5.8 节的底稿 <span class="tag">参考</span></li>
+<li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">PharmaSUG 2026 ET-140 Unleash the R-volution</a> — R 包验证全生命周期论文，5.8 节的底稿 <span class="tag">参考</span></li>
+<li><a href="https://www.pharmar.org/">R Validation Hub</a> — 白皮书、riskmetric / riskassessment、Early Adopter Guide <span class="tag">进阶</span></li>
+<li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-292.pdf">PharmaSUG 2026 ET-292 DevSecOps</a> — 三层架构、oysteR、数值复现开放问题，见第 9 章 9.7 <span class="tag">进阶</span></li>
 <li><a href="https://cran.r-project.org/package=logger">logger CRAN 页</a> — 日志级别、formatter、appender 的完整参考 <span class="tag">参考</span></li>
 </ul>
 </section>

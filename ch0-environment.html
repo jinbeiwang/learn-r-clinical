@@ -19,6 +19,7 @@
 <a href="ch6-pkgdev.html">6 R 包开发</a>
 <a href="ch7-shiny.html">7 Shiny 与交互</a>
 <a href="ch8-community.html">8 社区与职业</a>
+<a href="ch9-submission.html">9 监管递交与可复现性</a>
 <div class="grp">案例</div>
 <a href="cases/c1-sdtm-adam-t1.html">C1 SDTM→ADaM→Table 1</a>
 <a href="cases/c2-survival.html">C2 生存分析</a>
@@ -26,6 +27,7 @@
 <a href="cases/c4-nhanes.html">C4 NHANES 加权</a>
 <a href="cases/c5-trials-landscape.html">C5 试验景观</a>
 <a href="cases/c6-teal-explorer.html">C6 teal 探索器</a>
+<a href="cases/c7-submission-bundle.html">C7 最小可复现递交包</a>
 </aside>
 <main><article class="chap">
 <div class="crumb"><a href="index.html">全书目录</a> / 第 0 章</div>
@@ -36,11 +38,11 @@
 <h2 id="s0-1">0.1 R 已经走进监管递交</h2>
 <p>先放下"R 只是探索工具"的旧印象。三条已发生的事实：</p>
 <ul>
-<li><strong>R Consortium Submissions Working Group</strong> 完成了 Pilot 1–5：用 R 包形式向 FDA 递交分析并通过审评复现（见 <a href="https://rconsortium.github.io/submissions-wg/pilot1.html">Pilot 1 记录</a> 与 <a href="https://www.appsilon.com/post/r-in-fda-submissions">五轮 Pilot 经验总结</a>）。</li>
-<li><strong>2025-08 FDA eCTD 技术一致性指南更新</strong>：新增接受 <code class="inl">.rds / .rdata / .rda / .md / .rd</code> 等格式，扩展 <code class="inl">.zip / .html</code>（可直接递交完整 R 包），见 <a href="https://r-consortium.com/posts/expanded-fda-ectd-file-format-support-for-r-packages/">R Consortium 公告</a>。</li>
+<li><strong>R Consortium Submissions Working Group</strong> 已推进到 <strong>Pilot 1–7</strong>：前五个 Pilot 用 R 包形式向 FDA 递交分析并通过审评复现；Pilot 4（WebAssembly / 容器）2026-05 收到 FDA 回函，Pilot 5（Dataset-JSON）2026-01 重递，Pilot 6（AI 辅助生成程序）与 Pilot 7（合成基准数据）于 2026-01 启动（见 <a href="https://rconsortium.github.io/submissions-wg/">工作组主页</a> 与 <a href="https://r-consortium.org/posts/submissions-wg-2026">2026 计划公告</a>）。<strong>但请注意口径：FDA 不"验证"语言</strong>，这些 Pilot 是可行性证据，软件可靠性与流程验证的责任在申办方。</li>
+<li><strong>Specifications for File Format Types Using eCTD Specifications v9.3（2025-08-20）</strong>：新增接受 <code class="inl">.rds / .rdb / .rdx / .rdata / .rda / .md / .rd</code> 等格式，扩展 <code class="inl">.zip / .html</code>（可直接递交完整 R 包），见 <a href="https://r-consortium.org/posts/expanded-fda-ectd-file-format-support-for-r-packages/">R Consortium 公告</a>。此外 eCTD v4.0 自 2024-09-16 起可接受新申请，Technical Conformance Guide 已更新到 v1.5（2026-07-09）。</li>
 <li><strong>企业级成功案例</strong>：J&amp;J 以"SAS 做 ADaM + R 做 TFL"的混合策略完成 FDA 递交并获批，见 <a href="https://r-consortium.org/posts/johnson-and-johnsons-success-story-a-hybrid-r-sas-strategy-for-fda-submission/">案例复盘</a>；PharmaSUG 2026 最佳论文级工作 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">ET-279《Goodbye SAS, Hello R: Practical Workflows for CDISC》</a> 给出了 R 的 CDISC 全流程。</li>
 </ul>
-<div class="note">对你的含义：SAS 技能（CDISC 语义、SAP 理解、QC 纪律）在 R 世界里同样值钱，甚至更值钱——因为 R 生态缺的正是懂监管语境的人。</div>
+<div class="note">对你的含义：SAS 技能（CDISC 语义、SAP 理解、QC 纪律）在 R 世界里同样值钱，甚至更值钱——因为 R 生态缺的正是懂监管语境的人。<strong>本章只把 renv 当作项目工具讲；它在递交包里该怎么写进 ADRG、审评端如何重建环境、容器能解决什么不能解决什么，统一见 <a href="ch9-submission.html">第 9 章</a>。</strong></div>
 <div class="quiz" data-answer="B">
 <p class="quiz-q">测验 1：2025-08 FDA eCTD 指南更新后，下列哪组文件形式被新增/扩展接受？</p>
 <button class="quiz-opt" data-opt="A">仅 .R 脚本纯文本</button>
@@ -73,6 +75,7 @@ Attached base: stats, graphics, grDevices, utils, datasets, methods, base</pre>
 <li><code class="inl">sessionInfo()</code>：你的"PROC LOG 首页"——R 版本、平台、已加载包及版本，QC 与递交复现的第一证据。</li>
 <li><code class="inl">options(repos=...)</code>：换镜像源，类比 SAS 的 mirror 配置；清华源在国内下载二进制包快一个量级。</li>
 </ol></div>
+<div class="note"><strong>递交语境补充：</strong>R 版本不是"越高越好"，而是<strong>要与审评方事先沟通并写进 ADRG</strong>。Pilot 3 吃过跨环境 R 版本不一致的亏；Pilot 5 把 R 固定为 4.4.3，并在 ADRG 里补上「Rtools 版本须与所用 R 版本对应」的说明。另外 <code class="inl">sessionInfo()</code> 记录的是 R/平台/已加载包，<strong>不含系统库与 BLAS</strong>——这部分要靠容器或 ADRG 文字补，见 <a href="ch9-submission.html">9.3 / 9.6</a>。</div>
 
 <h2 id="s0-3">0.3 用 renv 把项目锁起来</h2>
 <p>SAS 环境由公司统一维护；R 的包生态是去中心的，<strong>环境 reproducibility 是你自己的责任</strong>。renv 为每个项目建独立库并生成 <code class="inl">renv.lock</code> 锁文件——这就是递交材料里"Set-up R environment"附录的底稿。</p>
@@ -102,6 +105,7 @@ The version of R recorded in the lockfile will be updated:
 <li><code class="inl">snapshot()</code>：把"当前项目库用了哪些包、什么版本"写进 renv.lock；相当于冻结 PROC 版本清单。</li>
 <li><code class="inl">restore()</code>：读锁文件装回同版本；"already synchronized" 说明当前库已与锁文件一致。</li>
 </ol></div>
+<div class="note"><strong>关键修正（见 <a href="ch9-submission.html">9.3</a>）：</strong>「按锁文件复现」在<strong>同一台机器、同一 OS</strong> 成立，但<strong>不要把申办方在 Linux 上生成的 <code class="inl">renv.lock</code> 原样交给用 Windows 的审评员</strong>。J&amp;J 的 ADRG 附录 <em>"Set-up R environment and Analysis"</em> 做法是：递交带精确版本的安装脚本 → 审评员在本机 <code class="inl">renv::init(bare=TRUE)</code> + <code class="inl">renv::snapshot()</code> 生成本地锁文件 → 再跑程序。ADRG（Analysis Data Reviewer's Guide）是审评员读分析数据与程序的第一入口，也是这套说明的载体；<a href="cases/c7-submission-bundle.html">C7</a> 把这一流程真的跑了一遍。容器/WebAssembly 能否替代 renv？Pilot 4 的答案是<strong>不能</strong>（webR 仍需 renv），见 9.6。</div>
 <div class="quiz" data-answer="C">
 <p class="quiz-q">测验 2：renv 在监管语境下最核心的价值是什么？</p>
 <button class="quiz-opt" data-opt="A">让包下载更快</button>
@@ -148,7 +152,7 @@ The version of R recorded in the lockfile will be updated:
 <tr><td>日志审阅（ERROR/WARNING 计数）</td><td>message/warning 捕获 + testthat 断言 + CI 全绿</td></tr>
 <tr><td>程序头注释规范</td><td>roxygen 文档 + Git commit 规范 + spec 链接</td></tr>
 </table>
-<div class="note">PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">ET-140</a> 给出了 R 包验证框架的完整思路，是第 5 章 5.8 节的底稿；现在先记住结论：<em>在 R 世界，验证的最小单元是"包 + 测试 + 锁环境"，而不是单个脚本。</em></div>
+<div class="note">PharmaSUG 2026 <a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-140.pdf">ET-140《Unleash the R-volution: A Blueprint for Building Package Validation Capabilities in our own organization》</a>（Kevin Lee, ClinVia）给出了 R 包验证框架的完整思路，是第 5 章 5.8 节的底稿；现在先记住结论：<em>在 R 世界，验证的最小单元是"包 + 测试 + 锁环境"，而不是单个脚本。</em>包风险评估的完整体系（R Validation Hub / riskmetric / riskassessment / risk.assessr）见 <a href="ch9-submission.html">9.5</a>。</div>
 
 <h2 id="s0-7">0.7 本站用法与复现指南</h2>
 <ul>
@@ -166,6 +170,10 @@ The version of R recorded in the lockfile will be updated:
 <li><a href="https://posit.co/resources/cheatsheets/">Posit Cheatsheets</a> — dplyr/tidyr/ggplot2 速查，打印贴墙 <span class="tag">参考</span></li>
 <li><a href="https://pharmasug.org/proceedings/2026/ET/PharmaSUG-2026-ET-279.pdf">PharmaSUG 2026 ET-279 Goodbye SAS, Hello R</a> — R 的 CDISC 全流程实战论文 <span class="tag">进阶</span></li>
 <li><a href="https://rinpharma.com">R/Pharma 会议</a> — 制药 R 社区年度会议与 Summit 圆桌笔记 <span class="tag">参考</span></li>
+<li><a href="https://rconsortium.github.io/submissions-wg/">R Consortium Submissions WG</a> — 七个 Pilot、FDA 回函与全部公开递交包 <span class="tag">参考</span></li>
+<li><a href="https://pharmaverse.github.io/examples/esub/esub.html">pharmaverse eSubmission</a> — ADRG 五项、xportr / pkglite / datasetjson 实操 <span class="tag">进阶</span></li>
+<li><a href="https://www.pharmar.org/">R Validation Hub</a>（pharmaR） — 白皮书、riskmetric、包风险分级 <span class="tag">进阶</span></li>
+<li><a href="https://phuse-org.github.io/OSDocuMeta/">PHUSE OSDocuMeta</a> — ADRG 版本元数据工作组与 adrgOS <span class="tag">参考</span></li>
 <li>本地精读：<code class="inl">../PharmaR/Pharma开源社区近2年文章精读与AI影响分析.md</code> — 近 2 年生态主线与 AI 影响 <span class="tag">参考</span></li>
 </ul>
 </section>
